@@ -34,7 +34,6 @@ class VirtInstTestPlugin():
 
 		# Initialize the logger for this object
 		self.logger = logging.getLogger(self.__class__.__name__)
-		self.logger.setLevel(logging.DEBUG)
 
 	class UnsupportedOS(Exception):
 		pass
