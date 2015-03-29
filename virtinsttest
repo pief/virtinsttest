@@ -341,16 +341,22 @@ def GenerateVirtInstallCmd():
 
 	cmd += " --noautoconsole" \
 	       " --noreboot" \
-	       " --debug" \
-	       " >{virtinstalloutput} 2>&1".format(
-		virtinstalloutput = os.path.join(tempdir, "virt-install.out")
-	)
+	       " --debug"
 
 	return cmd
 
 def StartVM(cmd):
 	logger.info("Calling virt-install to create VM and start installation (see \"virt-install.out\" for cmd output)...")
-	os.system(cmd)
+	try:
+		output = subprocess.check_output(
+			cmd, shell=True, env={ "LANG": "C" }, stderr=subprocess.STDOUT
+		)
+	except subprocess.CalledProcessError as e:
+		logger.error("''{0}'' exited with error code {1}:".format(cmd, e.returncode))
+		logger.error("-" * 75)
+		logger.error("''{0}''".format(e.output.strip()))
+		logger.error("-" * 75)
+		sys.exit(1)
 	domain = None
 	for i in range(10):
 		try:
