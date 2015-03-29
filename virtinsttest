@@ -51,6 +51,37 @@ def ProcessCmdLineArgs():
 	)
 	return parser.parse_args()
 
+def SetupLogging(loglevel):
+	# The main program uses the root logger while plugins will use loggers
+	# named after their class names. The log level set here propagates to
+	# these descendant loggers.
+	logger = logging.getLogger()
+	logger.setLevel(loglevel)
+
+	# We always log to stdout
+	loghandler = logging.StreamHandler()
+
+	# Define a log formatter that deals with multi-line log messages by
+	# repeating the prefix at the beginning of each line. Also define our
+	# custom log format that includes among other things an ISO date format,
+	# the source of the log message and the message's severity level.
+	class MultiLineFormatter(logging.Formatter):
+		def format(self, record):
+			import logging
+			str = logging.Formatter.format(self, record)
+			prefix = str[:str.rfind(record.message)]
+			str = str.replace("\n", "\n{0}".format(prefix))
+			return str
+	loghandler.setFormatter(
+		MultiLineFormatter(
+			fmt = "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+			datefmt = "%Y-%m-%d %H:%M:%S"
+		)
+	)
+
+	# Add it to our logger
+	logger.addHandler(loghandler)
+
 def ReadConfigFile(cfgfilename):
 	cfg = {}
 
@@ -409,12 +440,10 @@ if args.loglevel in logging._levelNames:
 else:
 	print "ERROR: Invalid loglevel \"{0}\"!".format(args.loglevel)
 	sys.exit(1)
-logging.basicConfig(
-	format = "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-	datefmt = "%Y-%m-%d %H:%M:%S"
-)
-logger = logging.getLogger(os.path.basename(sys.argv[0]).replace(".py", ""))
-logger.setLevel(args.loglevel)
+SetupLogging(args.loglevel)
+
+# The main program and each plugin use their own loggers
+logger = logging.getLogger("virtinsttest")
 
 # Print banner
 logger.info("virtinsttest -- Virtual installation testing script")
