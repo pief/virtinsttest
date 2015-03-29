@@ -403,12 +403,18 @@ def VMState():
 args = ProcessCmdLineArgs()
 
 # Initialize logging
+args.loglevel = args.loglevel.upper()
+if args.loglevel in logging._levelNames:
+	args.loglevel = logging._levelNames[args.loglevel]
+else:
+	print "ERROR: Invalid loglevel \"{0}\"!".format(args.loglevel)
+	sys.exit(1)
 logging.basicConfig(
 	format = "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 	datefmt = "%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger(os.path.basename(sys.argv[0]).replace(".py", ""))
-logger.setLevel(logging.DEBUG)
+logger.setLevel(args.loglevel)
 
 # Print banner
 logger.info("virtinsttest -- Virtual installation testing script")
