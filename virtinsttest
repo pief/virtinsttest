@@ -51,16 +51,6 @@ def ProcessCmdLineArgs():
 	)
 	return parser.parse_args()
 
-def ExecuteCmd(cmd):
-	try:
-		output = subprocess.check_output(
-			cmd, shell=True, env={ "LANG": "C" }, stderr=subprocess.STDOUT
-		)
-	except subprocess.CalledProcessError as e:
-		logger.error("Executing ''{0}'' yielded return code {1}:".format(cmd, e.returncode))
-		logger.error("''{0}''".format(e.output.strip()))
-		sys.exit(1)
-
 def ReadConfigFile(cfgfilename):
 	cfg = {}
 
