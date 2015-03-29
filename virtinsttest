@@ -1,0 +1,535 @@
+#!/usr/bin/python
+# encoding: utf-8
+#
+# virtinsttest - Virtual installation testing script
+#
+# Copyright (c) 2015 Pieter Hollants <pieter@hollants.com>
+# Licensed under the GNU Public License (GPL) version 3.
+#
+
+# virtinsttest version -- this stays "unknown" for development versions
+# and gets automatically replaced with proper values when creating a
+# release
+VirtInstTestVersion = "unknown"
+
+import sys, os, re, argparse, ConfigParser, glob, logging
+import itertools, atexit, tempfile, shutil, tarfile, subprocess, time
+
+def ProcessCmdLineArgs():
+	parser = argparse.ArgumentParser(
+		description="Virtual installation testing script.",
+		formatter_class=argparse.ArgumentDefaultsHelpFormatter
+	)
+	parser.add_argument(
+		"--version",
+		help="output version information and exit",
+		action="version",
+		version="%(prog)s {0}".format(VirtInstTestVersion)
+	)
+	parser.add_argument(
+		"--cfgfile",
+		help="reads CFGFILE as configuration file",
+		default="virtinsttest.conf"
+	)
+	parser.add_argument(
+		"--libvirtd-uri",
+		dest="libvirtduri",
+		help="sets the path of the libvirtd instance to connect to",
+		default="qemu:///session"
+	)
+	parser.add_argument(
+		"--loglevel",
+		dest="loglevel",
+		help="sets the log level",
+		default="debug"
+	)
+	parser.add_argument(
+		"--plugin-dir",
+		dest="plugindir",
+		help="sets the path to virtinsttest's plugins",
+		default=os.path.join(os.path.dirname(sys.argv[0]), "plugins")
+	)
+	return parser.parse_args()
+
+def ExecuteCmd(cmd):
+	try:
+		output = subprocess.check_output(
+			cmd, shell=True, env={ "LANG": "C" }, stderr=subprocess.STDOUT
+		)
+	except subprocess.CalledProcessError as e:
+		logger.error("Executing ''{0}'' yielded return code {1}:".format(cmd, e.returncode))
+		logger.error("''{0}''".format(e.output.strip()))
+		sys.exit(1)
+
+def ReadConfigFile(cfgfilename):
+	cfg = {}
+
+	# Use the ConfigParser module
+	cfgparser = ConfigParser.ConfigParser()
+
+	# Try to open the specified cfgfile
+	try:
+		with open(cfgfilename) as f:
+			cfgparser.readfp(f)
+	except IOError as e:
+		msg = "Opening config file {0} failed: {1}!"
+		logger.error(msg.format(cfgfilename, e.strerror))
+		sys.exit(1)
+
+	# Extract config values
+	try:
+		section = "General"
+		cfg["instname"] = cfgparser.get(section, "Name")
+
+		section = "Resources"
+		cfg["cpus"] = cfgparser.get(section, "CPUs")
+		cfg["memory"] = cfgparser.get(section, "Memory")
+
+		cfg["virtualdisks"] = []
+		for i in itertools.count():
+			directive = "Disk{0}".format(i+1)
+			try:
+				v = cfgparser.get(section, directive).split(",")
+				cfg["virtualdisks"].append({
+					"name": v[0],
+					"size": v[1],
+					"bootorder": v[2]
+				})
+			except ConfigParser.NoOptionError:
+				break
+
+		section = "Install"
+		cfg["isoimage"]   = cfgparser.get(section, "ISOImage")
+		cfg["mountpoint"] = cfgparser.get(section, "Mountpoint")
+		cfg["usbsticks"] = []
+		for i in itertools.count():
+			try:
+				v = cfgparser.get(section, "USBStick{0}".format(i+1)).split(",")
+				cfg["usbsticks"].append({
+					"name": "USBStick{0}".format(i+1),
+					"size": v[0],
+					"sourcedir": os.path.abspath(v[1])
+				})
+			except ConfigParser.NoOptionError:
+				break
+		try:
+			cfg["extraargs"] = cfgparser.get(section, "ExtraArgs")
+		except ConfigParser.NoOptionError:
+			cfg["extraargs"] = None
+	except ConfigParser.NoSectionError:
+		logger.error("Config file {0} has no {1} section!".format(cfgfilename, section))
+		sys.exit(1)
+
+	return cfg
+
+def DetectOS(path):
+	""" Tries to detect OS installation media using plugins.
+
+	If a plugin could be found that detected a support OS, a reference
+	to that plugin's instance is returned.
+
+	:param string path: Path to a mounted OS installation medium
+	:rtype Tuple(plugin, rules) or Tuple(None, None) """
+
+	# Find files ending in "_plugin.py"
+	for pluginfile in glob.glob(os.path.join(args.plugindir, "*_plugin.py")):
+		# Try to find a class name deriving from VirtInstTestPlugin
+		classname = None
+		with open(pluginfile, "r") as f:
+			for line in f.readlines():
+				m = re.match("class (.*)\(VirtInstTestPlugin\)", line)
+				if m and m.group(1):
+					pluginname = m.group(1)
+		if not pluginname:
+			continue
+
+		# Import the class from the module
+		exec "from {1} import {0}".format(
+			pluginname,
+			os.path.basename(pluginfile).replace(".py", "")
+		)
+
+		# Create a new plugin instance
+		try:
+			exec "p = {0}(\"{1}\", \"{2}\")".format(pluginname,	path, tempdir)
+		except plugins.VirtInstTestPlugin.UnsupportedOS:
+			# Plugin didn't detect a supported OS, so let's
+			# give other plugins a chance
+			continue
+
+		# Read the plugin's installation monitoring rules
+		rules = []
+		rulesfile = re.sub("_plugin.py", ".instmonrules", pluginfile)
+		try:
+			with open(rulesfile, "r") as f:
+				lineno = 0
+				for line in f.readlines():
+					lineno = lineno + 1
+					line = line.strip()
+					if len(line)>0 and not line.startswith("#"):
+						parts = re.split("\t+", line)
+						if len(parts) != 7:
+							msg = "{0}, line {1}: invalid format, seven tab-separated columns expected!"
+							msg = msg.format(rulesfile, lineno)
+							logger.error(msg)
+							sys.exit(-1)
+						rule = dict(zip([
+							"state",
+							"newstate",
+							"newtimeout",
+							"genfunc",
+							"testfunc",
+							"testarg",
+							"logmsg"
+						], parts))
+						if rule["genfunc"] == "-":
+							rule["genfunc"] = None
+						rules.append(rule)
+		except IOError as e:
+			msg = "Could not open {0}'s rules file {1}: {2}!"
+			msg = msg.format(pluginame, rulesfile, e.strerror)
+			logger.error(msg)
+			sys.exit(-1)
+
+		return p, rules
+
+	# No plugin found that could detect a supported OS
+	return (None, None)
+
+def CreateTempDir():
+	tempdir = tempfile.mkdtemp(prefix="virtinsttest.")
+
+	def DelTempDir():
+		logger.info("Removing temporary directory {0}...".format(tempdir))
+		#shutil.rmtree(tempdir)
+	atexit.register(DelTempDir)
+
+	return tempdir
+
+def ConnectToLibvirtd():
+	global conn
+
+	conn = libvirt.open(args.libvirtduri)
+	if conn:
+		logger.info("Connection to libvirtd instance at \"{0}\" established.".format(args.libvirtduri))
+	else:
+		logger.error("Could not connect to libvirtd at {0}!".format(args.libvirtduri))
+		sys.exit(1)
+
+def ConvertHumanReadableSize(size, stopat=""):
+	units = "tgmk"
+	for i in range(len(units)):
+		if stopat.upper() == units[i].upper():
+			break
+		regexp = r"[{0}{1}][bB]?$".format(units[i], units[i].upper())
+		if re.search(regexp, size):
+			val = int(re.sub(regexp, "", size)) * 1024
+			size = "{0}{1}".format(val, units[i+1] if i+1<len(units) else "")
+	return size
+
+def CreateVirtualDisk(disk):
+	disk["imagename"] = "{0}_{1}.qcow2".format(cfg["instname"], disk["name"])
+
+	logger.info("- Creating virtual disk image \"{0}\" ({1})...".format(disk["imagename"], disk["size"]))
+
+	atexit.register(DeleteVirtualDisk, disk["imagename"])
+
+	xml = "<volume>" \
+	      "<name>{0}</name>" \
+	      "<capacity>{1}</capacity>" \
+	      "<target><format type='qcow2'/></target>" \
+	      "</volume>"
+	xml = xml.format(disk["imagename"], ConvertHumanReadableSize(disk["size"]))
+	libvirt.virStoragePool.createXML(
+		storagepool, xml,
+		libvirt.VIR_STORAGE_VOL_CREATE_PREALLOC_METADATA
+	)
+
+def DeleteVirtualDisk(imagename):
+	logger.info("Deleting virtual disk image \"{0}\"...".format(imagename))
+
+	if not conn.isAlive():
+		ConnectToLibvirtd()
+
+	libvirt.virStoragePool.storageVolLookupByName(storagepool, imagename).delete()
+
+def CreateUSBStick(i, usbstick):
+	logger.info("Setting up USB stick {0}:".format(i))
+
+	tararchivename = "{0}.tar".format(usbstick["sourcedir"])
+	logger.info("- Creating tar archive from source directory \"{0}\"...".format(usbstick["sourcedir"]))
+	tararchive = tarfile.open(tararchivename, "w")
+	tararchive.add(usbstick["sourcedir"], arcname="")
+	tararchive.close()
+
+	# Create a virtual disk image
+	CreateVirtualDisk(usbstick)
+
+	logger.info("- Opening the virtual disk image...")
+	imagepath = libvirt.virStoragePool.storageVolLookupByName(storagepool, usbstick["imagename"]).path()
+	g = guestfs.GuestFS(python_return_dict=True)
+	g.add_drive_opts(imagepath)
+	g.launch()
+
+	logger.info("- Creating ext4 filesytem on it...")
+	devices = g.list_devices()
+	g.mkfs("ext4", devices[0])
+
+	logger.info("- Mounting this filesystem...")
+	g.mount(devices[0], "/")
+
+	logger.info("- Extracting tar archive into filesystem root...")
+	g.tar_in(tararchivename, "/")
+
+	logger.info("- Closing virtual disk image...")
+	g.close()
+
+	logger.info("- Removing tar archive...")
+	os.remove(tararchivename)
+
+def GenerateVirtInstallCmd():
+	cmd = "virt-install" \
+	      " --connect {libvirtduri}" \
+	      " --name \"{instname}\"" \
+	      " --virt-type kvm" \
+	      " --vcpus {cpus}" \
+	      " --memory {memory}" \
+	      " --graphics spice" \
+	      " --sound default" \
+	      " --nonetworks" \
+	      " --os-variant {osvariant}" \
+	      " --location {mountpoint}" \
+	      " --disk {isoimage},bus=ide,device=cdrom".format(
+		libvirtduri = args.libvirtduri,
+		instname = cfg["instname"],
+		cpus = cfg["cpus"],
+		memory = ConvertHumanReadableSize(cfg["memory"], "M").strip("M"),
+		osvariant = p.getOSVariant(),
+		mountpoint = cfg["mountpoint"],
+		isoimage = cfg["isoimage"]
+	)
+
+	for virtualdisk in cfg["virtualdisks"]:
+		diskstr = " --disk vol=default/{imagename},bus=virtio,boot_order={bootorder}"
+		diskstr = diskstr.format(
+			imagename = virtualdisk["imagename"],
+			bootorder = virtualdisk["bootorder"]
+		)
+		cmd += diskstr
+
+	for usbstick in cfg["usbsticks"]:
+		stickstr = " --disk vol=default/{imagename},bus=usb,removable=on"
+		stickstr = stickstr.format(
+			imagename = usbstick["imagename"]
+		)
+		cmd += stickstr
+
+	filesystems = p.getFilesystems()
+	if filesystems:
+		for src in filesystems:
+			cmd += " --filesystem={0},{1},mode=mapped".format(src,filesystems[src])
+
+	injects = p.getInitrdInjects()
+	if injects:
+		for inject in injects:
+			cmd += " --initrd-inject={0}".format(inject)
+
+	a = p.getExtraArgs()
+	b = [ cfg["extraargs"] ]
+	extraargs = (a+b) if a and b else a or b
+	cmd += " --extra-args=\"" + " ".join(extraargs) + "\""
+
+	cmd += " --noautoconsole" \
+	       " --noreboot" \
+	       " --debug" \
+	       " >{virtinstalloutput} 2>&1".format(
+		virtinstalloutput = os.path.join(tempdir, "virt-install.out")
+	)
+
+	return cmd
+
+def StartVM(cmd):
+	logger.info("Calling virt-install to create VM and start installation (see \"virt-install.out\" for cmd output)...")
+	os.system(cmd)
+	domain = None
+	for i in range(10):
+		try:
+			domain = conn.lookupByName(cfg["instname"])
+			if domain:
+				break
+		except libvirt.libvirtError:
+			pass
+		time.sleep(0.1)
+	if domain:
+		atexit.register(KillVM)
+		logger.info("VM now running in background, use virt-manager to access the console, if desired.")
+	else:
+		logger.error("virt-install failed!")
+		sys.exit(1)
+
+def KillVM():
+	if not conn.isAlive():
+		ConnectToLibvirtd()
+	try:
+		domain = conn.lookupByName(cfg["instname"])
+		state = domain.state()[0]
+		if state != libvirt.VIR_DOMAIN_SHUTOFF:
+			logger.info("Destroying VM...")
+			try:
+				domain.destroy()
+			except libvirt.libvirtError:
+				pass
+		logger.info("Undefining VM...")
+		domain.undefine()
+	except libvirt.libvirtError:
+		pass
+
+def VMState():
+	if not conn.isAlive():
+		ConnectToLibvirtd()
+
+	domain = conn.lookupByName(cfg["instname"])
+	vmstate, vmreason = domain.state()
+	if vmstate == libvirt.VIR_DOMAIN_SHUTOFF:
+		if vmreason == libvirt.VIR_DOMAIN_SHUTOFF_SHUTDOWN:
+			logger.info("VM shut off after regular shutdown, installation stage 1 finished.")
+			return 0
+		else:
+			logger.error("VM shut off without regular shutdown (reason code: {0})".format(vmreason))
+			return -1
+
+	return 1
+
+
+# ----------------------------- Main code -----------------------------
+
+# Process command line arguments
+args = ProcessCmdLineArgs()
+
+# Initialize logging
+logging.basicConfig(
+	format = "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+	datefmt = "%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger(os.path.basename(sys.argv[0]).replace(".py", ""))
+logger.setLevel(logging.DEBUG)
+
+# Print banner
+logger.info("virtinsttest -- Virtual installation testing script")
+logger.info("Copyright (c) 2015 Pieter Hollants <pieter@hollants.com>")
+
+# Read the configuration file
+cfg = ReadConfigFile(args.cfgfile)
+
+# Print a configuration summary
+logger.info("Virtual installation setup obtained from config file:")
+logger.info("- Installation name: {0}".format(cfg["instname"]))
+logger.info("- {0} CPUs, {1} memory".format(cfg["cpus"], cfg["memory"]))
+for i, virtualdisk in enumerate(cfg["virtualdisks"]):
+	msg = "- Virtual disk {0}: \"{1}\", {2}, Boot order: {3}"
+	logger.info(msg.format(i+1, virtualdisk["name"], virtualdisk["size"], virtualdisk["bootorder"]))
+logger.info("- Installation ISO image : \"{0}\"".format(cfg["isoimage"]))
+logger.info("- Installation mountpoint: \"{0}\"".format(cfg["mountpoint"]))
+for i, usbstick in enumerate(cfg["usbsticks"]):
+	msg = "- USB Stick {0}: {1}, source directory \"{2}\""
+	logger.info(msg.format(i+1, usbstick["size"], usbstick["sourcedir"]))
+
+# Make the plugin directory available for importing and import the
+# plugin API
+sys.path.insert(0, args.plugindir)
+import plugins
+
+# Create the temporary directory
+tempdir = CreateTempDir()
+logger.info("Using temporary directory \"{0}\".".format(tempdir))
+
+# Detect the operating system to be installed
+global p
+(p, rules) = DetectOS(cfg["mountpoint"])
+if not p:
+	logger.error("Could not detect a supported OS at {0}!".format(cfg["mountpoint"]))
+	sys.exit(1)
+
+# Import libvirt and guestfs
+try:
+	for module in [ "libvirt", "guestfs" ] :
+		exec("import {0}".format(module))
+except ImportError:
+	logger.error("Could not import {0} Python module!".format(module))
+	sys.exit(1);
+
+# Connect to libvirtd
+ConnectToLibvirtd()
+
+# Set up storage
+logger.info("Setting up configured storage:")
+storagepool = libvirt.virConnect.storagePoolLookupByName(conn, "default")
+map(CreateVirtualDisk, cfg["virtualdisks"])
+for i, usbstick in enumerate(cfg["usbsticks"]):
+	CreateUSBStick(i+1, usbstick)
+
+# Now generate virt-install command
+StartVM(GenerateVirtInstallCmd())
+
+# VM installation uses a finite state machine (FSM) that must transition
+# away from the initial installation state 0 in at most three minutes,
+# otherwise we'll assume that booting kernel and installation system has
+# failed. Transition rules and additional install states are defined in
+# OS-specific modules.
+inststate        = 0
+inststatetime    = time.time()
+inststatetimeout = 180
+logger.info("[I00] Booting kernel and installation system...")
+
+# The big VM installation monitoring loop
+rc = 0
+while rc == 0:
+	# Check general VM state
+	vmstate = VMState()
+	if vmstate < 1:
+		rc = vmstate
+		break
+
+	# Call any data generator functions defined by installation
+	# monitoring rules for the current installation state
+	data = {}
+	for r in [r for r in rules if r["state"] == inststate and r["genfunc"]]:
+		# Each data generator function gets called only once to yield
+		# the next data element (eg. logfile line)
+		if r["genfunc"] not in data:
+			# A particular data generator function may at this time have
+			# no new data to offer
+			try:
+				data[r["genfunc"]] = getattr(sys.modules[__name__], r["genfunc"])().next()
+			except StopIteration:
+				data[r["genfunc"]] = None
+
+	# Process installation monitoring rules for the current installation
+	# state
+	for r in [r for r in rules if r["state"] == inststate]:
+		# A rule's test function might require additional input data
+		# obtained from previously called data generator function
+		if r["genfunc"]:
+			if data[r["genfunc"]] == None:
+				continue
+			testfuncargs = (r["logmsg"], r["testarg"], data[r["genfunc"]])
+		else:
+			testfuncargs = (r["logmsg"], r["testarg"])
+
+		# Execute test function which returns a logmessage if transition
+		# to the current rule's newstate is desired and "None" otherwise
+		logmsg = getattr(sys.modules[__name__], r["testfunc"])(*testfuncargs)
+		if logmsg:
+			logger.info("[I{0:02}] {1}".format(r["newstate"], logmsg))
+			inststate        = r["newstate"]
+			inststatetime    = time.time()
+			inststatetimeout = r["newtimeout"]
+			break
+
+	# If none of the rules matched, check the current installation
+	# state's timeout set by previously applied rules
+	if (time.time() - inststatetime) > inststatetimeout:
+		msg = "Got stuck in installation state I{0:02} for more than {1} seconds, aborting installation."
+		logger.error(msg.format(inststate, inststatetimeout))
+		rc = -1
+		break

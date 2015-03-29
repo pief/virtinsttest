@@ -1,0 +1,76 @@
+
+
+            virtinsttest - Virtual installation testing script
+         Copyright (c) 2015 Pieter Hollants <pieter@hollants.com>
+           Licensed under the GNU Public License (GPL) version 3
+
+
+WHAT IS IT?
+
+virtinsttest is a Python script that allows automated virtual testing
+of automated OS installations.
+
+The idea is that you throw your (unmodified) OS installation scripting
+code (eg. AutoYast or, in the future, Kickstart code) plus a simple
+virtinsttest-specific config file at it and it will do all the work
+for you that you'd otherwise have to do manually:
+- Creating virtual disk image files 
+- Creating virtual USB sticks based on the contents of a directory
+  (to simulate feeding the AutoYast/Kickstart code to the SUSE/RedHat
+  installer in a no-network scenario)
+- Defining a test VM instance
+- Starting the VM and the OS installation
+- Monitoring the installation for progress
+- Running tests inside the installed system to determine
+  installation success or failure (not implemented yet)
+
+...effectively allowing you to use virtinsttest as part of a CI pipeline
+to test changes to your OS installation scripting code automatically and
+get rapid feedback. Provided that you do write that code yourself which,
+admittedly, probably is a bit out of vogue with modern provisioning
+methodologies such as Foreman, but then again, how do you install the
+Foreman machine?
+
+virtinsttest uses guestfstools and, through libvirt, qemu and KVM. It
+uses a plugin system to implement support for the OSes to be installed
+(eg. watching installation progress).
+
+
+REQUIREMENTS
+
+In its initial version, virtinsttest supports openSUSE 13.2 only (as
+distribution to be installed and possibly also as host operating system).
+
+virtinsttest in any case requires:
+- libvirt (the libraries)
+- the libvirt Python bindings
+- virt-install
+- guestfs-tools
+- the libguestfs Python bindings
+
+While libvirt allows connecting to remote libvirt instances, virtinsttest
+probably does not really support this well because it does some additional
+stuff such as building disk images. Meaning that you will probably want
+to run virtinsttest on the virtualization host directly. Then you'd also
+want:
+- qemu-kvm (qemu with support for the kvm kernel module)
+- libvirt-daemon (libvirtd)
+- libvirt-daemon-qemu (libvirtd's qemu driver)
+
+
+DOWNLOAD
+
+virtinsttest is currently available in source code form only via
+
+  https://github.com/pief/virtinsttest/
+
+
+INSTALLATION
+
+The supplied RPM spec files places virtinsttest in /usr/bin.
+Documentation will be installed into /usr/share/doc/packages/virtinsttest.
+
+
+TODO
+
+- Document ToDos...

@@ -1,0 +1,65 @@
+#
+# spec file for package virtinsttest
+#
+# Copyright (c) 2015 Pieter Hollants <pieter@hollants.com>
+#
+
+Name:           virtinsttest
+Version:        @VIRTINSTTEST_VERSION@
+Release:        0
+License:        GPL-3.0
+Summary:        Virtual installation testing script
+Url:            http://www.0xf8.org
+Group:          System/Management
+Source:         http://github.com/pief/virtinsttest/virtinsttest-%{version}.tar.bz2
+BuildRoot:      %{_tmppath}/%{name}-%{version}-build
+BuildArch:      noarch
+Requires:       libvirt
+Requires:       libvirt-python
+Requires:       virt-install
+Requires:       guestfs-tools
+Requires:       python-libguestfs
+Recommends:     qemu-kvm
+Recommends:     libvirt-daemon
+Recommends:     libvirt-daemon-qemu
+
+%description
+virtinsttest is a Python script that allows automated virtual testing
+of automated OS installations.
+
+The idea is that you throw your (unmodified) OS installation scripting
+code (eg. AutoYast or, in the future, Kickstart code) plus a simple
+virtinsttest-specific config file at it and it will do all the work
+for you that you'd otherwise have to do manually:
+- Creating virtual disk image files 
+- Creating virtual USB sticks based on the contents of a directory
+  (to simulate feeding the AutoYast/Kickstart code to the SUSE/RedHat
+  installer in a no-network scenario)
+- Defining a test VM instance
+- Starting the VM and the OS installation
+- Monitoring the installation for progress
+- Running tests inside the installed system to determine
+  installation success or failure (not implemented yet)
+
+...effectively allowing you to use virtinsttest as part of a CI pipeline
+to test changes to your OS installation scripting code automatically and
+get rapid feedback.
+
+virtinsttest uses guestfstools and, through libvirt, qemu and KVM. It
+uses a plugin system to implement support for the OSes to be installed
+(eg. watching installation progress).
+
+%prep
+%setup -q
+
+%build
+
+%install
+make install PREFIX=%{buildroot}/usr
+
+%files
+%defattr(-,root,root,-)
+%{_bindir}/virtinsttest
+%doc ChangeLog
+
+%changelog

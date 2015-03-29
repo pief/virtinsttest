@@ -1,0 +1,27 @@
+#
+# virtinsttest - Virtual installation testing script
+#
+# Copyright (c) 2015 Pieter Hollants <pieter@hollants.com>
+# Licensed under the GNU Public License (GPL) version 3.
+#
+# Makefile for source distribution archives
+#
+
+ifndef PREFIX
+PREFIX := /usr/local
+endif
+
+all: help
+
+help:
+	@echo
+	@echo "            virtinsttest - Virtual installation testing script"
+	@echo "         Copyright (c) 2015 Pieter Hollants <pieter@hollants.com>"
+	@echo
+	@echo "Targets:"
+	@echo " install    - Install to PREFIX: $(PREFIX)"
+	@echo
+
+install:
+	@mkdir -p $(PREFIX)/bin || exit 1
+	@install -m 0755 virtinsttest $(PREFIX)/bin || exit 1
