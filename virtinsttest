@@ -62,19 +62,45 @@ def SetupLogging(loglevel):
 	loghandler = logging.StreamHandler()
 
 	# Define a log formatter that deals with multi-line log messages by
-	# repeating the prefix at the beginning of each line. Also define our
-	# custom log format that includes among other things an ISO date format,
-	# the source of the log message and the message's severity level.
-	class MultiLineFormatter(logging.Formatter):
+	# repeating the prefix at the beginning of each line. Also supports
+	# colored severity levels.
+	class MultiLineColorFormatter(logging.Formatter):
+		colors = dict(zip([ "RED", "GREEN", "YELLOW", "BLUE", "MAGENTA", "CYAN" ], map(lambda x: 31+x, range(6))))
+
+		severitycolors = {
+			"WARN": "YELLOW", "WARNING": "YELLOW", "ERROR": "RED", "CRITICAL": "RED", "INFO": "MAGENTA", "DEBUG": "BLUE"
+		}
+
 		def format(self, record):
+			# Might not always have been imported
 			import logging
+
+			# Compose the "source" of the log message (function name
+			# and line number)
+			if record.funcName == "<module>":
+				record.source = "{0}:Main:{1}".format(record.name, record.lineno)
+			else:
+				record.source = "{0}:{1}():{2}".format(record.name, record.funcName, record.lineno)
+
+			# Define levelcolor property associated with record's severity level
+			record.levelcolor = "\033[1;{0}m".format(self.colors[self.severitycolors[record.levelname]])
+			record.nocolor    = "\033[0m"
+
+			# Format the record into a string...
 			str = logging.Formatter.format(self, record)
+
+			# ...and add the prefix after every newline
 			prefix = str[:str.rfind(record.message)]
 			str = str.replace("\n", "\n{0}".format(prefix))
+
 			return str
+
+    # Use the log formatter among with a custom log format that includes
+    # among other things an ISO date format, the source of the log message
+    # (as composed above) and the message's severity level in color.
 	loghandler.setFormatter(
-		MultiLineFormatter(
-			fmt = "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+		MultiLineColorFormatter(
+            fmt = "%(asctime)s %(source)-38.38s %(levelcolor)s%(levelname)-8.8s%(nocolor)s: %(message)s",
 			datefmt = "%Y-%m-%d %H:%M:%S"
 		)
 	)
