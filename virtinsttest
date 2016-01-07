@@ -301,10 +301,10 @@ def DeleteVirtualDisk(imagename):
 	libvirt.virStoragePool.storageVolLookupByName(storagepool, imagename).delete()
 
 def CreateUSBStick(i, usbstick):
-	logger.info("Setting up USB stick {0}:".format(i))
+	logger.info("- Setting up USB stick {0}:".format(i))
 
 	tararchivename = "{0}.tar".format(usbstick["sourcedir"])
-	logger.info("- Creating tar archive from source directory \"{0}\"...".format(usbstick["sourcedir"]))
+	logger.info("  - Creating tar archive from source directory \"{0}\"...".format(usbstick["sourcedir"]))
 	tararchive = tarfile.open(tararchivename, "w")
 	tararchive.add(usbstick["sourcedir"], arcname="")
 	tararchive.close()
@@ -312,26 +312,26 @@ def CreateUSBStick(i, usbstick):
 	# Create a virtual disk image
 	CreateVirtualDisk(usbstick)
 
-	logger.info("- Opening the virtual disk image...")
+	logger.info("  - Opening the virtual disk image...")
 	imagepath = libvirt.virStoragePool.storageVolLookupByName(storagepool, usbstick["imagename"]).path()
 	g = guestfs.GuestFS(python_return_dict=True)
 	g.add_drive_opts(imagepath)
 	g.launch()
 
-	logger.info("- Creating ext4 filesytem on it...")
+	logger.info("  - Creating ext4 filesytem on it...")
 	devices = g.list_devices()
 	g.mkfs("ext4", devices[0])
 
-	logger.info("- Mounting this filesystem...")
+	logger.info("  - Mounting this filesystem...")
 	g.mount(devices[0], "/")
 
-	logger.info("- Extracting tar archive into filesystem root...")
+	logger.info("  - Extracting tar archive into filesystem root...")
 	g.tar_in(tararchivename, "/")
 
-	logger.info("- Closing virtual disk image...")
+	logger.info("  - Closing virtual disk image...")
 	g.close()
 
-	logger.info("- Removing tar archive...")
+	logger.info("  - Removing tar archive...")
 	os.remove(tararchivename)
 
 def GenerateVirtInstallCmd():
