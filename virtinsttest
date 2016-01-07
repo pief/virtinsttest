@@ -422,7 +422,7 @@ def StartVM(cmd):
 	logger.info("Calling virt-install to create VM and start installation (see \"virt-install.out\" for cmd output)...")
 	try:
 		output = subprocess.check_output(
-			cmd, shell=True, env={ "LANG": "C" }, stderr=subprocess.STDOUT
+			cmd, shell=True, env=dict(os.environ, LANG="C"), stderr=subprocess.STDOUT
 		)
 	except subprocess.CalledProcessError as e:
 		logger.error("The following virt-install command line exited with error code {0}:\n  {1}".format(e.returncode, cmd))
