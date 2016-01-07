@@ -274,6 +274,31 @@ def ConvertHumanReadableSize(size, stopat=""):
 			size = "{0}{1}".format(val, units[i+1] if i+1<len(units) else "")
 	return size
 
+def CreateISOStoragePool():
+	poolname = "{0}_isopool".format(cfg["instname"])
+	logger.info("- Creating storage pool \"{0}\" for ISO image \"{1}\"...".format(poolname, cfg["isoimage"]))
+
+	atexit.register(DeleteIsoStoragePool, poolname)
+
+	xml = "<pool type='dir'>" \
+	      "<name>{0}</name>" \
+	      "<target>" \
+	      "<path>{1}</path>" \
+	      "</target>" \
+	      "</pool>"
+	xml = xml.format(poolname, os.path.dirname(cfg["isoimage"]))
+	pool = conn.storagePoolCreateXML(xml, 0)
+
+	return poolname
+
+def DeleteIsoStoragePool(poolname):
+	logger.info("Deleting ISO image storage pool \"{0}\"...".format(poolname))
+
+	if not conn.isAlive():
+		ConnectToLibvirtd()
+
+	conn.storagePoolLookupByName(poolname).destroy()
+
 def CreateVirtualDisk(disk):
 	disk["imagename"] = "{0}_{1}.qcow2".format(cfg["instname"], disk["name"])
 
@@ -346,14 +371,15 @@ def GenerateVirtInstallCmd():
 	      " --nonetworks" \
 	      " --os-variant {osvariant}" \
 	      " --location {mountpoint}" \
-	      " --disk {isoimage},bus=ide,device=cdrom".format(
+	      " --disk vol={isopool}/{isoimage},bus=ide,device=cdrom".format(
 		libvirtduri = args.libvirtduri,
 		instname = cfg["instname"],
 		cpus = cfg["cpus"],
 		memory = ConvertHumanReadableSize(cfg["memory"], "M").strip("M"),
 		osvariant = p.getOSVariant(),
 		mountpoint = cfg["mountpoint"],
-		isoimage = cfg["isoimage"]
+		isopool = isopool,
+		isoimage = os.path.basename(cfg["isoimage"])
 	)
 
 	for virtualdisk in cfg["virtualdisks"]:
@@ -520,6 +546,7 @@ ConnectToLibvirtd()
 
 # Set up storage
 logger.info("Setting up configured storage:")
+isopool = CreateISOStoragePool()
 storagepool = libvirt.virConnect.storagePoolLookupByName(conn, "default")
 map(CreateVirtualDisk, cfg["virtualdisks"])
 for i, usbstick in enumerate(cfg["usbsticks"]):
