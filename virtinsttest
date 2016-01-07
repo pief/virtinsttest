@@ -486,7 +486,7 @@ try:
 	for module in [ "libvirt", "guestfs" ] :
 		exec("import {0}".format(module))
 except ImportError:
-	logger.error("Could not import {0} Python module!".format(module))
+	logger.error("Could not import {0} Python module -- python-guestfs package missing?".format(module))
 	sys.exit(1);
 
 # Connect to libvirtd
