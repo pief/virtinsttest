@@ -419,7 +419,7 @@ def GenerateVirtInstallCmd():
 	return cmd
 
 def StartVM(cmd):
-	logger.info("Calling virt-install to create VM and start installation (see \"virt-install.out\" for cmd output)...")
+	logger.info("Calling virt-install to create VM and start installation...")
 	try:
 		output = subprocess.check_output(
 			cmd, shell=True, env=dict(os.environ, LANG="C"), stderr=subprocess.STDOUT
