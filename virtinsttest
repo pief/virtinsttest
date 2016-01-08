@@ -13,7 +13,7 @@
 VirtInstTestVersion = "unknown"
 
 import sys, os, re, argparse, ConfigParser, glob, logging
-import itertools, atexit, tempfile, shutil, tarfile, subprocess, time
+import itertools, atexit, traceback, tempfile, shutil, tarfile, subprocess, time
 
 def ProcessCmdLineArgs():
 	parser = argparse.ArgumentParser(
@@ -107,6 +107,20 @@ def SetupLogging(loglevel):
 
 	# Add it to our logger
 	logger.addHandler(loghandler)
+
+def GlobalExceptionHandler(cls, e, tb):
+	""" Global exception handler installed as soon as logging is available. """
+
+	if cls is KeyboardInterrupt:
+		print ""
+	else:
+		msg = "*** Unhandled exception in {0}! ***\n".format(os.path.basename(sys.argv[0]))
+		msg = msg + "".join(traceback.format_exception(cls, e, tb))
+		logger.critical(msg)
+
+	logger.info("Exiting!")
+
+	sys.exit(-1)
 
 def ReadConfigFile(cfgfilename):
 	cfg = {}
@@ -500,6 +514,10 @@ logger = logging.getLogger("virtinsttest")
 # Print banner
 logger.info("virtinsttest -- Virtual installation testing script")
 logger.info("Copyright (c) 2015 Pieter Hollants <pieter@hollants.com>")
+
+# Install the global exception handler so that unhandled exceptions in the
+# code executed after this call get logged
+sys.excepthook = GlobalExceptionHandler
 
 # Read the configuration file
 cfg = ReadConfigFile(args.cfgfile)
