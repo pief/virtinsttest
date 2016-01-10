@@ -46,8 +46,8 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		# done by observing YaST's logfiles, for which we need a
 		# "y2logs" directory that will be shared between host and guest
 		self.logger.info("Creating \"y2logs\" directory (will be shared with VM via 9p)...")
-		self.y2logsdir = os.path.join(tempdir, "y2logs")
-		os.mkdir(self.y2logsdir)
+		self.y2logs_dir = os.path.join(tempdir, "y2logs")
+		os.mkdir(self.y2logs_dir)
 
 		# openSUSE installation media lack the 9p kernel modules
 		# required for sharing directories between host and guest, so
@@ -123,7 +123,7 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 
 	def getFilesystems(self):
 		return {
-			self.y2logsdir: "y2logs"
+			self.y2logs_dir: "y2logs"
 		}
 
 	def getInitrdInjects(self):
@@ -138,33 +138,38 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		]
 
 	def Y2LogFileReadable(self, logmsg, logname):
-		if os.access(os.path.join(y2logsdir, logname), os.R_OK):
+		if os.access(os.path.join(self.y2logs_dir, logname), os.R_OK):
 			return logmsg
 		else:
 			return None
 
+	# Generator function that returns a tuple (lineno, line) from y2log.
+	# Also handles file deletion/recreation gracefully.
 	def CatY2Log(self):
-		y2logname = os.path.join(y2logsdir, "y2log")
+		y2log_name = os.path.join(self.y2logs_dir, "y2log")
 
+		# Get y2log's current inode
 		try:
-			curino = os.stat(y2logname).st_ino
+			curino = os.stat(y2log_name).st_ino
 		except OSError:
 			return
 
-		if not hasattr(CatY2Log, "f") \
-		or     curino != CatY2Log.ino:
-			if hasattr(CatY2Log, "f"):
-				CatY2Log.f.close()
-			CatY2Log.f = open(y2logname, "r")
-			CatY2Log.ino = os.fstat(CatY2Log.f.fileno()).st_ino
-			CatY2Log.lineno = 0
+		# Need to (re)open y2log?
+		if not hasattr(self, "y2log_f") \
+		or not hasattr(self, "y2log_ino") \
+		or     curino != self.y2log_ino:
+			if hasattr(self, "y2log_f"):
+				self.y2log_f.close()
+			self.y2log_f = open(y2log_name, "r")
+			self.y2log_ino = os.fstat(self.y2log_f.fileno()).st_ino
+			self.y2log_lineno = 0
 
 		while True:
-			line = CatY2Log.f.readline()
+			line = self.y2log_f.readline()
 			if not line:
 				break
-			CatY2Log.lineno = CatY2Log.lineno + 1
-			yield (CatY2Log.lineno, line)
+			self.y2log_lineno = self.y2log_lineno + 1
+			yield (self.y2log_lineno, line)
 
 	def MatchY2LogLine(self, logmsg, pattern, data):
 		lineno = data[0]
