@@ -355,7 +355,10 @@ def CreateUSBStick(i, usbstick):
 	imagepath = libvirt.virStoragePool.storageVolLookupByName(storagepool, usbstick["imagename"]).path()
 	g = guestfs.GuestFS(python_return_dict=True)
 	g.add_drive_opts(imagepath)
-	g.launch()
+	try:
+		g.launch()
+	except Exception as e:
+		raise
 
 	logger.info("  - Creating ext4 filesytem on it...")
 	devices = g.list_devices()
