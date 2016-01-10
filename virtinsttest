@@ -615,7 +615,7 @@ while rc == 0:
 			# A particular data generator function may at this time have
 			# no new data to offer
 			try:
-				data[r["genfunc"]] = getattr(sys.modules[__name__], r["genfunc"])().next()
+				data[r["genfunc"]] = getattr(p, r["genfunc"])().next()
 			except StopIteration:
 				data[r["genfunc"]] = None
 
@@ -633,7 +633,7 @@ while rc == 0:
 
 		# Execute test function which returns a logmessage if transition
 		# to the current rule's newstate is desired and "None" otherwise
-		logmsg = getattr(sys.modules[__name__], r["testfunc"])(*testfuncargs)
+		logmsg = getattr(p, r["testfunc"])(*testfuncargs)
 		if logmsg:
 			logger.info("[I{0:02}] {1}".format(r["newstate"], logmsg))
 			inststate        = r["newstate"]
