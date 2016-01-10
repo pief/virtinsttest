@@ -243,6 +243,16 @@ def DetectOS(path):
 							"testarg",
 							"logmsg"
 						], parts))
+
+						for key in [ "state", "newstate", "newtimeout" ] :
+							try:
+								rule[key] = int(rule[key])
+							except TypeError as e:
+								msg = "{0}, line {1}: invalid {2} {3}, number expected!"
+								msg = msg.format(rulesfile, lineno, key, rule[key])
+								logger.error(msg)
+								sys.exit(-1)
+
 						if rule["genfunc"] == "-":
 							rule["genfunc"] = None
 						rules.append(rule)
