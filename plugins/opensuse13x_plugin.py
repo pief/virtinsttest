@@ -177,6 +177,10 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 
 		match = re.search(pattern, line)
 		if match:
-			return logmsg.format(lineno, match.group(1) if len(match.groups())>0 else None)
+			return logmsg.format(
+				lineno,
+				match.group(1) if len(match.groups()) > 0 \
+				               else None
+			)
 		else:
 			return None
