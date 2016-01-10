@@ -40,7 +40,7 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 
 		# Make detected version available via variables used by
 		# standard getters
-		self.osvariant = "opensuse{0}".format(re.sub("\..*", "", self.osversion))
+		self.osvariant = "opensuse{0}".format(self.osversion)
 
 		# For openSUSE distributions, installation monitoring will be
 		# done by observing YaST's logfiles, for which we need a
