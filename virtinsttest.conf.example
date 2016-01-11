@@ -1,0 +1,33 @@
+#
+# virtinsttest example configuration file
+#
+
+[General]
+# The name for this virtual installation (eg. the hostname)
+Name=Horst
+
+[Resources]
+# Number of CPUs assigned to the VM
+CPUs=1
+
+# Memory assigned to the VM
+Memory=1024M
+
+# A "DiskN" line for each hard disk to be emulated (N is a number 1, 2...)
+# DiskN=<name>,<size>,<bootorder>
+Disk1=HDD,1000GB,2
+Disk2=SSD,55GB,1
+
+[Install]
+# The ISO image of the openSUSE version to install
+ISOImage=/home/foo/openSUSE-xxx.iso
+
+# The path where the ISO image was mounted
+Mountpoint=/home/foo/openSUSE-mnt
+
+# Create a 4GB USBStick with the contents from the "usbstick" directory
+USBStick1=4GB,usbstick
+
+# Extra args to pass on the kernel command line
+# Here: Locate autoyast control files on the virtual USB stick
+ExtraArgs=autoyast=usb:///autoyast-horst.xml
