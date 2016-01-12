@@ -122,16 +122,34 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		shutil.rmtree(duddir)
 
 	def getVirtInstallFilesystemArgs(self):
+		""" Returns a dictionary of "--filesystem" arguments for the
+		virt-install command.
+
+		The host's source directory is the key, the guest's target
+		point the value.
+
+		:rtype: dict """
+
 		return {
 			self.y2logs_dir: "y2logs"
 		}
 
 	def getVirtInstallInitrdInjectArgs(self):
+		""" Returns a list of "--initrd-inject" arguments for the
+		virt-install command.
+
+		:rtype: list """
+
 		return [
 			self.dudfile
 		]
 
 	def getVirtInstallExtraArgs(self):
+		""" Returns a list of "--extra-args" arguments for the
+		virt-install command.
+
+		:rtype: array """
+
 		return [
 			"y2debug=1",
 			"driverupdate=file:///{0}".format(os.path.basename(self.dudfile))
