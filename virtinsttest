@@ -487,7 +487,7 @@ def StartVM(cmd):
 		logger.error("-" * 75)
 		sys.exit(1)
 	domain = None
-	for i in range(10):
+	for _ in range(10):
 		domain = LookupVMByName(cfg["instname"])
 		if domain:
 			break
