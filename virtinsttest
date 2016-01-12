@@ -33,12 +33,6 @@ def ProcessCmdLineArgs():
 		default="virtinsttest.conf"
 	)
 	parser.add_argument(
-		"--libvirtd-uri",
-		dest="libvirtduri",
-		help="sets the path of the libvirtd instance to connect to",
-		default="qemu:///session"
-	)
-	parser.add_argument(
 		"--loglevel",
 		dest="loglevel",
 		help="sets the log level",
@@ -49,6 +43,12 @@ def ProcessCmdLineArgs():
 		dest="plugindir",
 		help="sets the path to virtinsttest's plugins",
 		default=os.path.join(os.path.dirname(sys.argv[0]), "plugins")
+	)
+	parser.add_argument(
+		"--libvirtd-uri",
+		dest="libvirtduri",
+		help="sets the path of the libvirtd instance to connect to",
+		default="qemu:///session"
 	)
 	return parser.parse_args()
 
