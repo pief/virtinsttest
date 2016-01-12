@@ -16,30 +16,16 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 	def __init__(self, path, tempdir):
 		VirtInstTestPlugin.__init__(self, path, tempdir)
 
-		# The most robust way to detect a openSUSE distribution seems
-		# to be via the installation medium's bootloader menu
-		try:
-			self.osversion = None
-			gfxbootfile = os.path.join(path, "boot/x86_64/loader/gfxboot.cfg")
-			with open(gfxbootfile) as f:
-				for line in f:
-					match = re.match(r"^product=openSUSE (.+)$", line)
-					if match and match.group(1):
-						self.osversion = match.group(1)
-						break
-		except IOError as e:
-			pass
-
-		# No openSUSE medium?
-		if not self.osversion:
+		# Try to detect openSUSE medium and version
+		self.osversion = self._ProbeOpenSUSEVersion(path)
+		if self.osversion:
+			msg = "Detected openSUSE version: {0}".format(self.osversion)
+			self.logger.info(msg)
+		else:
 			raise VirtInstTestPlugin.UnsupportedOS()
 
-		# Report detected openSUSE version
-		msg = "Detected openSUSE version: {0}".format(self.osversion)
-		self.logger.info(msg)
-
 		# Make detected version available via variables used by
-		# standard getters
+		# standard getter
 		self.osvariant = "opensuse{0}".format(self.osversion)
 
 		# For openSUSE distributions, installation monitoring will be
@@ -52,6 +38,39 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		# openSUSE installation media lack the 9p kernel modules
 		# required for sharing directories between host and guest, so
 		# we retrofit them via the "Driver Update Disk" (DUD) mechanism
+		self.dudfile = self._GenerateDUD(path, tempdir)
+
+	def _ProbeOpenSUSEVersion(self, path):
+		""" Probes for an OpenSUSE medium and its version.
+
+		path: The path to a mounted supposed openSUSE medium
+
+		:rtype: string|None The detected version number """
+
+		# The most robust way to detect a openSUSE distribution seems
+		# to be via the installation medium's bootloader menu
+		try:
+			gfxbootfile = os.path.join(path, "boot/x86_64/loader/gfxboot.cfg")
+			with open(gfxbootfile) as f:
+				for line in f:
+					match = re.match(r"^product=openSUSE (.+)$", line)
+					if match and match.group(1):
+						return match.group(1)
+						break
+		except IOError as e:
+			pass
+
+		return None
+
+	def _GenerateDUD(self, path, tempdir):
+		""" Creates a Driver Update Disk (DUD) image to retrofit 9p
+		    filesystem sharing.
+
+		path: The path to the mounted openSUSE ISO to create a DUD for
+		tempdir: The directory to create the .cpio.gz archive in
+
+		:rtype: string The filename of the DUD .cpio.gz archive """
+
 		self.logger.info("Creating Driver Update Disk (DUD) image to retrofit 9p filesystem sharing:")
 
 		self.logger.info("- Creating DUD directory structure...")
@@ -115,11 +134,11 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		cmd = cmd.format(tempdir, self.osversion)
 		subprocess.check_call(cmd, shell=True)
 
-		self.dudfile = "{0}/dud_opensuse{1}.cpio.gz".format(tempdir, self.osversion)
-
 		self.logger.info("- Removing temporary directories...")
 		shutil.rmtree(modextractdir)
 		shutil.rmtree(duddir)
+
+		return "{0}/dud_opensuse{1}.cpio.gz".format(tempdir, self.osversion)
 
 	def getVirtInstallFilesystemArgs(self):
 		""" Returns a dictionary of "--filesystem" arguments for the
