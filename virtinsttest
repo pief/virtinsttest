@@ -193,6 +193,8 @@ def DetectOS(path):
 	:param string path: Path to a mounted OS installation medium
 	:rtype Tuple(plugin, rules) or Tuple(None, None) """
 
+	logger.debug("Trying plugins to detect operating system...")
+
 	# Find files ending in "_plugin.py"
 	for pluginfile in glob.glob(os.path.join(args.plugindir, "*_plugin.py")):
 		# Try to find a class name deriving from VirtInstTestPlugin
@@ -262,6 +264,8 @@ def DetectOS(path):
 			msg = msg.format(pluginame, rulesfile, e.strerror)
 			logger.error(msg)
 			sys.exit(-1)
+
+		logger.debug("Read {0} installation monitoring rules.".format(len(rules)))
 
 		return p, rules
 
@@ -448,6 +452,7 @@ def GenerateVirtInstallCmd():
 
 def StartVM(cmd):
 	logger.info("Calling virt-install to create VM and start installation...")
+	logger.debug(cmd)
 	try:
 		output = subprocess.check_output(
 			cmd, shell=True, env=dict(os.environ, LANG="C"), stderr=subprocess.STDOUT
