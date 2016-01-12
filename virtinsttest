@@ -601,7 +601,7 @@ StartVM(GenerateVirtInstallCmd())
 inststate        = 0
 inststatetime    = time.time()
 inststatetimeout = 180
-logger.info("[I00] Booting kernel and installation system...")
+logger.info("[I00:<180s] Booting kernel and installation system...")
 
 # The big VM installation monitoring loop
 rc = 0
@@ -647,10 +647,12 @@ while rc == 0:
 		logmsg = getattr(p, r["testfunc"])(*testfuncargs)
 		if logmsg:
 			# State transition, apply new state and timeout
-			logger.info("[I{0:02}] {1}".format(r["newstate"], logmsg))
 			inststate        = r["newstate"]
 			inststatetime    = now
 			inststatetimeout = r["newtimeout"]
+
+			logger.info("[I{0:02}:<{1:03}s] {2}".format(inststate, inststatetimeout, logmsg))
+
 			break
 
 	# If none of the rules matched, check the current installation
