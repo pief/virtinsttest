@@ -121,17 +121,17 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		shutil.rmtree(modextractdir)
 		shutil.rmtree(duddir)
 
-	def getFilesystems(self):
+	def getVirtInstallFilesystemArgs(self):
 		return {
 			self.y2logs_dir: "y2logs"
 		}
 
-	def getInitrdInjects(self):
+	def getVirtInstallInitrdInjectArgs(self):
 		return [
 			self.dudfile
 		]
 
-	def getExtraArgs(self):
+	def getVirtInstallExtraArgs(self):
 		return [
 			"y2debug=1",
 			"driverupdate=file:///{0}".format(os.path.basename(self.dudfile))

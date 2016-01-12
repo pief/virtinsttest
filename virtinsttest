@@ -439,17 +439,17 @@ def GenerateVirtInstallCmd():
 		)
 		cmd += stickstr
 
-	filesystems = p.getFilesystems()
+	filesystems = p.getVirtInstallFilesystemArgs()
 	if filesystems:
 		for src in filesystems:
 			cmd += " --filesystem={0},{1},mode=mapped".format(src,filesystems[src])
 
-	injects = p.getInitrdInjects()
+	injects = p.getVirtInstallInitrdInjectArgs()
 	if injects:
 		for inject in injects:
 			cmd += " --initrd-inject={0}".format(inject)
 
-	a = p.getExtraArgs()
+	a = p.getVirtInstallExtraArgs()
 	b = [ cfg["extraargs"] ]
 	extraargs = (a+b) if a and b else a or b
 	cmd += " --extra-args=\"" + " ".join(extraargs) + "\""

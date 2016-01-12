@@ -46,7 +46,7 @@ class VirtInstTestPlugin():
 
 		return self.osvariant
 
-	def getFilesystems(self):
+	def getVirtInstallFilesystemArgs(self):
 		""" Returns a dictionary of "--filesystem" arguments for the
 		virt-install command.
 
@@ -57,7 +57,7 @@ class VirtInstTestPlugin():
 
 		return None
 
-	def getInitrdInjects(self):
+	def getVirtInstallInitrdInjectArgs(self):
 		""" Returns an array of "--initrd-inject" arguments for the
 		virt-install command.
 
@@ -65,7 +65,7 @@ class VirtInstTestPlugin():
 
 		return None
 
-	def getExtraArgs(self):
+	def getVirtInstallExtraArgs(self):
 		""" Returns an array of "--extra-args" arguments for the
 		virt-install command.
 
