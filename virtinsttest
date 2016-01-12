@@ -14,7 +14,7 @@ VirtInstTestVersion = "unknown"
 
 import sys, os, re, argparse, ConfigParser, glob, logging
 import itertools, atexit, traceback, tempfile, shutil, tarfile, subprocess, time
-import libvirt
+import libvirt, StringIO, PIL.Image, PIL.ImageOps, PIL.ImageFont, PIL.ImageDraw, cv2, numpy
 
 def ProcessCmdLineArgs():
 	parser = argparse.ArgumentParser(
@@ -49,6 +49,46 @@ def ProcessCmdLineArgs():
 		dest="libvirtduri",
 		help="sets the path of the libvirtd instance to connect to",
 		default="qemu:///session"
+	)
+	parser.add_argument(
+	)
+	parser.add_argument(
+		"--video",
+		dest="video",
+		help="create a video of the VM console output",
+		metavar="FILE",
+		default=None
+	)
+	parser.add_argument(
+		"--video-font",
+		dest="videofont",
+		help="specifies the font to use for subtitling the video",
+		metavar="FONT",
+		default="/usr/share/fonts/truetype/LiberationSans-Regular.ttf"
+	)
+	parser.add_argument(
+		"--video-width",
+		dest="videowidth",
+		help="sets the maximum expectable VM console width",
+		metavar="PIXELS",
+		default=1024,
+		type=int
+	)
+	parser.add_argument(
+		"--video-height",
+		dest="videoheight",
+		help="sets the maximum expectable VM console height",
+		metavar="PIXELS",
+		default=768,
+		type=int
+	)
+	parser.add_argument(
+		"--video-framerate",
+		dest="videoframerate",
+		help="specifies how often to capture the VM console (CAUTION: setting this too high may make installation monitoring too slow!)",
+		metavar="FPS",
+		default=5.0,
+		type=float
 	)
 	return parser.parse_args()
 
@@ -529,6 +569,117 @@ def VMState():
 	else:
 		return -2
 
+@EnsureLibvirtdConnection
+def CaptureVMConsole(footertext, footerdata):
+	global video
+
+	# If creating the video has not been enabled, just return
+	if not args.video:
+		return
+
+	# Check if VM is active
+	if VMState() == 1:
+		# Tell libvirt to take a screenshot of the first screen (requires
+		# the virStream object we created in ConnectToLibvirtd()
+		stream = conn.newStream()
+		domain = LookupVMByName(cfg["instname"])
+		try:
+			domain.screenshot(stream, 0, 0)
+		except libvirt.libvirtError:
+			return
+
+		# Transfer the image data of yet unknown size from libvirt into
+		# a StringIO buffer, sort of an in-memory file
+		buf = StringIO.StringIO()
+		def writer(stream, data, buf):
+			buf.write(data)
+		stream.recvAll(writer, buf)
+		buf.seek(0)
+		stream.finish()
+
+		# Create a Python Image Library Image object out of the buffer
+		image = PIL.Image.open(buf)
+
+		# Test whether configured video width/height is sufficient for
+		# the current screenshot
+		(width, height) = image.size
+		if width > args.videowidth:
+			logger.error("VM console width {0} > configured video width {1}, specify increased --video-width!".format(width, args.videowidth))
+			sys.exit(-1)
+		if height > args.videoheight:
+			logger.error("VM console height {0} > configured video height {1}, specify increased --video-height!".format(height, args.videoheight))
+			sys.exit(-1)
+	else:
+		# VM is not active, produce a black image
+		image = PIL.Image.new("RGB", (args.videowidth, args.videoheight), "black")
+
+	# Add vertical space for footer
+	footerlines = 1 + p.getMaxFooterDataLines()
+	newimage = PIL.Image.new(image.mode, (args.videowidth, args.videoheight + footerlines * 20), PIL.ImageOps._color("grey", image.mode))
+	newimage.paste(image, (0, 0))
+
+	# Add footer
+	footer = "{0} [I{1:02}:{2:03}<{3:03}s] {4}".format(
+		time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
+		inststate,
+		int(now - inststatetime),
+		inststatetimeout,
+		footertext
+	)
+	font = PIL.ImageFont.truetype(args.videofont, 15, encoding="unic")
+	draw = PIL.ImageDraw.Draw(newimage)
+	draw.rectangle(
+		[(0, args.videoheight + 1), (args.videowidth, args.videoheight + footerlines * 20)],
+		fill="lightgrey"
+	)
+	draw.line(
+		[(0, args.videoheight + 1), (args.videowidth, args.videoheight + 1)],
+		fill="white",
+		width=1
+	)
+	draw.text(
+		(2, args.videoheight + 3),
+		footer,
+		fill="black",
+		font=font
+	)
+	if footerlines > 1:
+		draw.line(
+			[(0, args.videoheight + 21), (args.videowidth, args.videoheight + 21)],
+			fill="black",
+			width=1
+		)
+		yoffset = args.videoheight + 23
+		for line in footerdata:
+			draw.text(
+				(2, yoffset),
+				line,
+				fill="black",
+				font=font
+			)
+			yoffset = yoffset + 20
+
+	# Open the video file, if necessary
+	if not "video" in globals():
+		logger.info("Capturing VM console output into {0}, {1}x{2} pixels @ {3} fps...".format(
+			args.video,
+			args.videowidth,
+			args.videoheight,
+			args.videoframerate
+		))
+		video = cv2.VideoWriter(
+			args.video,
+			cv2.cv.CV_FOURCC(*'MJPG'),
+			args.videoframerate,
+			(args.videowidth, args.videoheight + footerlines*20)
+		)
+
+		# Close it properly when exiting
+		atexit.register(video.release)
+
+	# Write out the screenshot as a frame
+	video.write(cv2.cvtColor(numpy.array(newimage), cv2.COLOR_RGB2BGR))
+
 # ----------------------------- Main code -----------------------------
 
 # Process command line arguments
@@ -615,9 +766,14 @@ StartVM(GenerateVirtInstallCmd())
 # states and transitions are defined in OS-specific *.instmonrules files
 # and were read into the "rules" list in DetectOS().
 inststate        = 0
-inststatetime    = time.time()
+inststatetime    = statstime = now = time.time()
 inststatetimeout = 180
-logger.info("[I00:<180s] Booting kernel and installation system...")
+
+lastlogmsg = "Booting kernel and installation system..."
+footerdata = []
+logger.info("[I00:<180s] {0}".format(lastlogmsg))
+CaptureVMConsole(lastlogmsg, footerdata)
+snapshottime = now
 
 # The big VM installation monitoring loop
 rc = 0
@@ -652,6 +808,10 @@ while rc == 0:
 			except StopIteration:
 				data[r["genfunc"]] = None
 
+	# Have the OS-specific plugin prepare footer data just in case
+	# we're going to take a screenshot
+	footerdata = p.getFooterData(data)
+
 	# Process installation monitoring rules for the current installation
 	# state
 	for r in [r for r in rules if r["state"] == inststate]:
@@ -672,8 +832,12 @@ while rc == 0:
 			inststate        = r["newstate"]
 			inststatetime    = now
 			inststatetimeout = r["newtimeout"]
+			lastlogmsg       = logmsg
 
 			logger.info("[I{0:02}:<{1:03}s] {2}".format(inststate, inststatetimeout, logmsg))
+
+			CaptureVMConsole(logmsg, footerdata)
+			snapshottime = now
 
 			break
 
@@ -681,6 +845,24 @@ while rc == 0:
 	# applied rules
 	if (now - inststatetime) > inststatetimeout:
 		msg = "Got stuck in installation state I{0:02} for more than {1} seconds, aborting installation."
-		logger.error(msg.format(inststate, inststatetimeout))
+		msg = msg.format(inststate, inststatetimeout)
+		logger.error(msg)
+		CaptureVMConsole(msg, footerdata)
+
+		# Kill VM
+		KillVM()
+
 		rc = -1
 		break
+
+	# Take screenshot
+	if now - snapshottime > (1/args.videoframerate):
+		snapshottime = now
+		CaptureVMConsole(lastlogmsg, p.getFooterData(data))
+
+	# Statistics hook
+	if now - statstime > 1:
+		statstime = now
+		logmsg = p.getStats(data)
+		if logmsg:
+			logger.debug(logmsg)

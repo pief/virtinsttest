@@ -72,3 +72,53 @@ class VirtInstTestPlugin():
 		:rtype: list """
 
 		return []
+
+	def getFooterData(self, data):
+		""" Returns a list of strings to be shown in the footer
+		    placed on screenshots as the data currently processed by
+		    the finite state machine.
+
+		This function gets called by virtinsttest when a screenshot of
+		the VM console has been taken and the footer text is being added
+		to it. It can be used to augment the screenshot with one or
+		multiple lines showing the current data (eg. logfile lines) that
+		is being examined to decide on a possible installation state
+		transition, thereby making it a bit easier to work out the right
+		installation monitoring rules for a particular OS.
+
+		"data" is a dictionary with the data returned by all of the
+		plugin's data generation functions for the current installation
+		state. It is indexed by the generation function name.
+
+		:rtype: list """
+
+		return []
+
+	def getMaxFooterDataLines(self):
+		""" Returns the maximum number of lines this plugin will add
+		    to the footer placed on screenshots.
+
+		When creating the video containing the VM console's screenshots
+		virtinsttest must specify the frame height beforehand. Therefore
+		a plugin that implements the getFooterDataForScreenshot() method
+		must also specify the maximum number of text lines (= list
+		elements) that method will return.
+
+		:rtype: integer """
+
+		return 0
+
+	def getStats(self, data):
+		""" Get statistics about data processing in virtinsttest.
+
+		Plugins may use timing information and the information in "data"
+		to generate statistics about virtinsttest's data processing, eg. the
+		number of logfile lines processed per second.
+
+		"data" is a dictionary with the data returned by all of the
+		plugin's data generation functions for the current installation
+		state. It is indexed by the generation function name.
+
+		:rtype: string A log message with statistics """
+
+		return

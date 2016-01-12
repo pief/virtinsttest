@@ -8,7 +8,7 @@
 # Licensed under the GNU Public License (GPL) version 3.
 #
 
-import os, re, subprocess, shutil
+import os, re, time, subprocess, shutil
 
 from plugins import *
 
@@ -39,6 +39,17 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		# required for sharing directories between host and guest, so
 		# we retrofit them via the "Driver Update Disk" (DUD) mechanism
 		self.dudfile = self._GenerateDUD(path, tempdir)
+
+		# Initialize for getFooterData()
+		self.logbuf = []
+
+		# Initialize statistics vars
+		self.lastlineno = 0
+		self.laststatstime = 0
+		self.lps_samples = 0
+		self.min_lps = 0
+		self.avg_lps = 0
+		self.max_lps = 0
 
 	def _ProbeOpenSUSEVersion(self, path):
 		""" Probes for an OpenSUSE medium and its version.
@@ -242,3 +253,84 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 			)
 		else:
 			return None
+
+	def getFooterData(self, data):
+		""" Returns a list of strings to be shown in the footer
+		    placed on screenshots as the data currently processed by
+		    the finite state machine.
+
+		This function gets called by virtinsttest when a screenshot of
+		the VM console has been taken and the footer text is being added
+		to it. It can be used to augment the screenshot with one or
+		multiple lines showing the current data (eg. logfile lines) that
+		is being examined to decide on a possible installation state
+		transition, thereby making it a bit easier to work out the right
+		installation monitoring rules for a particular OS.
+
+		"data" is a dictionary with the data returned by all of the
+		plugin's data generation functions for the current installation
+		state. It is indexed by the generation function name.
+
+		:rtype: list """
+
+		if "CatY2Log" in data and data["CatY2Log"]:
+			self.logbuf = self.logbuf[-3:]
+			self.logbuf.append("{0}: {1}".format(data["CatY2Log"][0], data["CatY2Log"][1]))
+
+		return self.logbuf
+
+	def getMaxFooterDataLines(self):
+		""" Returns the maximum number of lines this plugin will add
+		    to the footer placed on screenshots.
+
+		When creating the video containing the VM console's screenshots
+		virtinsttest must specify the frame height beforehand. Therefore
+		a plugin that implements the getFooterDataForScreenshot() method
+		must also specify the maximum number of text lines (= list
+		elements) that method will return.
+
+		:rtype: integer """
+
+		return 3
+
+	def getStats(self, data):
+		""" Get statistics about data processing in virtinsttest.
+
+		Plugins may use timing information and the information in "data"
+		to generate statistics about virtinsttest's data processing, eg. the
+		number of logfile lines processed per second.
+
+		"data" is a dictionary with the data returned by all of the
+		plugin's data generation functions for the current installation
+		state. It is indexed by the generation function name.
+
+		:rtype: string A log message with statistics """
+
+		if "CatY2Log" in data and data["CatY2Log"]:
+			curlineno = data["CatY2Log"][0]
+			now = time.time()
+			if self.laststatstime:
+				curlps = int((curlineno - self.lastlineno)/(now - self.laststatstime))
+				if self.min_lps == 0 or curlps < self.min_lps:
+					self.min_lps = curlps
+				if curlps > self.max_lps:
+					self.max_lps = curlps
+				self.lps_samples = self.lps_samples+1
+				self.avg_lps = int((self.avg_lps + curlps)/2)
+
+				logmsg = "Log lines processed: cur={0}, min={1}, avg={2} lps (n={3}), max={4}".format(
+					curlps,
+					self.min_lps,
+					self.avg_lps,
+					self.lps_samples,
+					self.max_lps
+				)
+			else:
+				logmsg = None
+
+			self.lastlineno = curlineno
+			self.laststatstime = now
+
+			return logmsg
+
+		return None

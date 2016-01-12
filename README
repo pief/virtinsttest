@@ -57,6 +57,12 @@ want:
 - libvirt-daemon (libvirtd)
 - libvirt-daemon-qemu (libvirtd's qemu driver)
 
+For capturing VM console output you additionally need:
+- python-Pillow
+- python-opencv
+- python-numpy
+- and their associated libraries
+
 
 DOWNLOAD
 
