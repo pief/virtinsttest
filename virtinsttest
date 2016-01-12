@@ -523,15 +523,12 @@ def VMState():
 		vmstate, vmreason = domain.state()
 		if vmstate == libvirt.VIR_DOMAIN_SHUTOFF:
 			if vmreason == libvirt.VIR_DOMAIN_SHUTOFF_SHUTDOWN:
-				logger.info("VM shut off after regular shutdown, installation stage 1 finished.")
 				return 0
 			else:
-				logger.error("VM shut off without regular shutdown (reason code: {0})".format(vmreason))
 				return -1
 
 		return 1
 	else:
-		logger.error("VM completely unknown to libvirt any longer, did somebody probably interfere?")
 		return -2
 
 # ----------------------------- Main code -----------------------------
@@ -629,6 +626,12 @@ rc = 0
 while rc == 0:
 	# Check general VM state
 	vmstate = VMState()
+	if vmstate == 0:
+		logger.info("VM shut off after regular shutdown, installation stage 1 finished.")
+	elif vmstate == -1:
+		logger.error("VM shut off without regular shutdown (reason code: {0})".format(vmreason))
+	elif vmstate == -2:
+		logger.error("VM completely unknown to libvirt any longer, did somebody probably interfere?")
 	if vmstate < 1:
 		rc = vmstate
 		break
