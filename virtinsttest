@@ -589,14 +589,15 @@ map(CreateVirtualDisk, cfg["virtualdisks"])
 for i, usbstick in enumerate(cfg["usbsticks"]):
 	CreateUSBStick(i+1, usbstick)
 
-# Now generate virt-install command
+# Now generate virt-install command and start VM
 StartVM(GenerateVirtInstallCmd())
 
-# VM installation uses a finite state machine (FSM) that must transition
+# The VM installation uses a finite state machine (FSM) that must transition
 # away from the initial installation state 0 in at most three minutes,
 # otherwise we'll assume that booting kernel and installation system has
-# failed. Transition rules and additional install states are defined in
-# OS-specific modules.
+# failed. Installation monitoring rules including additional installation
+# states and transitions are defined in OS-specific *.instmonrules files
+# and were read into the "rules" list in DetectOS().
 inststate        = 0
 inststatetime    = time.time()
 inststatetimeout = 180
@@ -612,7 +613,9 @@ while rc == 0:
 		break
 
 	# Call any data generator functions defined by installation
-	# monitoring rules for the current installation state
+	# monitoring rules for the current installation state. These functions
+	# generate data that may then be used by installation monitoring rules
+	# to decide on state transitions.
 	data = {}
 	for r in [r for r in rules if r["state"] == inststate and r["genfunc"]]:
 		# Each data generator function gets called only once to yield
@@ -629,7 +632,7 @@ while rc == 0:
 	# state
 	for r in [r for r in rules if r["state"] == inststate]:
 		# A rule's test function might require additional input data
-		# obtained from previously called data generator function
+		# obtained from previously called data generator functions
 		if r["genfunc"]:
 			if data[r["genfunc"]] == None:
 				continue
@@ -637,10 +640,11 @@ while rc == 0:
 		else:
 			testfuncargs = (r["logmsg"], r["testarg"])
 
-		# Execute test function which returns a logmessage if transition
+		# Execute the test function which returns a logmessage if transition
 		# to the current rule's newstate is desired and "None" otherwise
 		logmsg = getattr(p, r["testfunc"])(*testfuncargs)
 		if logmsg:
+			# State transition, apply new state and timeout
 			logger.info("[I{0:02}] {1}".format(r["newstate"], logmsg))
 			inststate        = r["newstate"]
 			inststatetime    = time.time()
