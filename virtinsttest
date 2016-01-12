@@ -460,6 +460,19 @@ def GenerateVirtInstallCmd():
 
 	return cmd
 
+@EnsureLibvirtdConnection
+def LookupVMByName(name):
+	""" Alternative to libvirt's conn.lookupByName() which triggers ugly
+	    errors on stderr if a domain (a VM) can not be found. """
+
+	domains = conn.listAllDomains()
+	for domain in domains:
+		if domain.name() == name:
+			return domain
+
+	return None
+
+@EnsureLibvirtdConnection
 def StartVM(cmd):
 	logger.info("Calling virt-install to create VM and start installation...")
 	logger.debug(cmd)
@@ -475,12 +488,9 @@ def StartVM(cmd):
 		sys.exit(1)
 	domain = None
 	for i in range(10):
-		try:
-			domain = conn.lookupByName(cfg["instname"])
-			if domain:
-				break
-		except libvirt.libvirtError:
-			pass
+		domain = LookupVMByName(cfg["instname"])
+		if domain:
+			break
 		time.sleep(0.1)
 	if domain:
 		atexit.register(KillVM)
@@ -492,33 +502,37 @@ def StartVM(cmd):
 @EnsureLibvirtdConnection
 def KillVM():
 	try:
-		domain = conn.lookupByName(cfg["instname"])
-		state = domain.state()[0]
-		if state != libvirt.VIR_DOMAIN_SHUTOFF:
-			logger.info("Destroying VM...")
-			try:
-				domain.destroy()
-			except libvirt.libvirtError:
-				pass
-		logger.info("Undefining VM...")
-		domain.undefine()
+		domain = LookupVMByName(cfg["instname"])
+		if domain:
+			state = domain.state()[0]
+			if state != libvirt.VIR_DOMAIN_SHUTOFF:
+				logger.info("Destroying VM...")
+				try:
+					domain.destroy()
+				except libvirt.libvirtError:
+					pass
+			logger.info("Undefining VM...")
+			domain.undefine()
 	except libvirt.libvirtError:
 		pass
 
 @EnsureLibvirtdConnection
 def VMState():
-	domain = conn.lookupByName(cfg["instname"])
-	vmstate, vmreason = domain.state()
-	if vmstate == libvirt.VIR_DOMAIN_SHUTOFF:
-		if vmreason == libvirt.VIR_DOMAIN_SHUTOFF_SHUTDOWN:
-			logger.info("VM shut off after regular shutdown, installation stage 1 finished.")
-			return 0
-		else:
-			logger.error("VM shut off without regular shutdown (reason code: {0})".format(vmreason))
-			return -1
+	domain = LookupVMByName(cfg["instname"])
+	if domain:
+		vmstate, vmreason = domain.state()
+		if vmstate == libvirt.VIR_DOMAIN_SHUTOFF:
+			if vmreason == libvirt.VIR_DOMAIN_SHUTOFF_SHUTDOWN:
+				logger.info("VM shut off after regular shutdown, installation stage 1 finished.")
+				return 0
+			else:
+				logger.error("VM shut off without regular shutdown (reason code: {0})".format(vmreason))
+				return -1
 
-	return 1
-
+		return 1
+	else:
+		logger.error("VM completely unknown to libvirt any longer, did somebody probably interfere?")
+		return -2
 
 # ----------------------------- Main code -----------------------------
 
