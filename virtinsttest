@@ -506,12 +506,10 @@ def KillVM():
 		if domain:
 			state = domain.state()[0]
 			if state != libvirt.VIR_DOMAIN_SHUTOFF:
-				logger.info("Destroying VM...")
-				try:
-					domain.destroy()
-				except libvirt.libvirtError:
-					pass
-			logger.info("Undefining VM...")
+				logger.info("Stopping (destroying) VM...")
+				domain.destroy()
+
+			logger.info("Deleting (undefining) VM...")
 			domain.undefine()
 	except libvirt.libvirtError:
 		pass
