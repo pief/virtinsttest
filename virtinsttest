@@ -292,6 +292,16 @@ def ConnectToLibvirtd():
 		logger.error("Could not connect to libvirtd at {0}!".format(args.libvirtduri))
 		sys.exit(1)
 
+def EnsureLibvirtdConnection(orig_func):
+	""" A decorator that ensures that the libvirtd connection still exists
+	    before the decorated function gets executed. """
+
+	def decorated_func(*args):
+		if not conn.isAlive():
+			ConnectToLibvirtd()
+		return orig_func(*args)
+	return decorated_func
+
 def ConvertHumanReadableSize(size, stopat=""):
 	units = "tgmk"
 	for i in range(len(units)):
@@ -479,9 +489,8 @@ def StartVM(cmd):
 		logger.error("virt-install failed!")
 		sys.exit(1)
 
+@EnsureLibvirtdConnection
 def KillVM():
-	if not conn.isAlive():
-		ConnectToLibvirtd()
 	try:
 		domain = conn.lookupByName(cfg["instname"])
 		state = domain.state()[0]
@@ -496,10 +505,8 @@ def KillVM():
 	except libvirt.libvirtError:
 		pass
 
+@EnsureLibvirtdConnection
 def VMState():
-	if not conn.isAlive():
-		ConnectToLibvirtd()
-
 	domain = conn.lookupByName(cfg["instname"])
 	vmstate, vmreason = domain.state()
 	if vmstate == libvirt.VIR_DOMAIN_SHUTOFF:
