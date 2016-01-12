@@ -55,20 +55,20 @@ class VirtInstTestPlugin():
 
 		:rtype: dict """
 
-		return None
+		return {}
 
 	def getVirtInstallInitrdInjectArgs(self):
-		""" Returns an array of "--initrd-inject" arguments for the
+		""" Returns a list of "--initrd-inject" arguments for the
 		virt-install command.
 
-		:rtype: array """
+		:rtype: list """
 
-		return None
+		return []
 
 	def getVirtInstallExtraArgs(self):
-		""" Returns an array of "--extra-args" arguments for the
+		""" Returns a list of "--extra-args" arguments for the
 		virt-install command.
 
 		:rtype: array """
 
-		return None
+		return []
