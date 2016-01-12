@@ -677,8 +677,8 @@ while rc == 0:
 
 			break
 
-	# If none of the rules matched, check the current installation
-	# state's timeout set by previously applied rules
+	# Check the current installation state's timeout set by previously
+	# applied rules
 	if (now - inststatetime) > inststatetimeout:
 		msg = "Got stuck in installation state I{0:02} for more than {1} seconds, aborting installation."
 		logger.error(msg.format(inststate, inststatetimeout))
