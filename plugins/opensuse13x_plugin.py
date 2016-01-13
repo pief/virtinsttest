@@ -175,14 +175,27 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		]
 
 	def Y2LogFileReadable(self, logmsg, logname):
+		""" Test method that tests whether a YaST2 logfile is readable.
+
+		logmsg: The string to return if "logname" is readable
+		logname: The logfile (in the y2log dir) to test for readability
+
+		:rtype: string|None """
+
 		if os.access(os.path.join(self.y2logs_dir, logname), os.R_OK):
 			return logmsg
 		else:
 			return None
 
-	# Generator function that returns a tuple (lineno, line) from y2log.
-	# Also handles file deletion/recreation gracefully.
 	def CatY2Log(self):
+		""" Data generation method that returns tuples (lineno, line)
+		    from y2log.
+
+		Takes advantage of the generator pattern. Also handles y2log
+		deletion/recreation gracefully.
+
+		:rtype: tuple """
+
 		y2log_name = os.path.join(self.y2logs_dir, "y2log")
 
 		# Get y2log's current inode
@@ -208,11 +221,19 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 			self.y2log_lineno = self.y2log_lineno + 1
 			yield (self.y2log_lineno, line)
 
-	def MatchY2LogLine(self, logmsg, pattern, data):
+	def MatchY2LogLine(self, logmsg, regexp, data):
+		""" Test method that tests whether a logline matches a pattern.
+
+		logmsg: The string to return if a match is found.
+		regexp: The regular expression to match on.
+		data: A tuple (lineno, line) as returned by CatY2Log.
+
+		:rtype: string|None """
+
 		lineno = data[0]
 		line   = data[1]
 
-		match = re.search(pattern, line)
+		match = re.search(regexp, line)
 		if match:
 			return logmsg.format(
 				lineno,
