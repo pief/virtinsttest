@@ -655,7 +655,7 @@ while rc == 0:
 	# Process installation monitoring rules for the current installation
 	# state
 	for r in [r for r in rules if r["state"] == inststate]:
-		# A rule's test function might require additional input data
+		# A rule's test method might require additional input data
 		# obtained from previously called data generator functions
 		if r["genfunc"]:
 			if data[r["genfunc"]] == None:
@@ -664,7 +664,7 @@ while rc == 0:
 		else:
 			testfuncargs = (r["logmsg"], r["testarg"])
 
-		# Execute the test function which returns a logmessage if transition
+		# Execute the test method which returns a logmessage if transition
 		# to the current rule's newstate is desired and "None" otherwise
 		logmsg = getattr(p, r["testfunc"])(*testfuncargs)
 		if logmsg:
