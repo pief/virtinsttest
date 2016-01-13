@@ -28,9 +28,9 @@ class VirtInstTestPlugin():
 
 		:param string path: Path to a mounted OS installation medium
 		:param string tempdir: Path to virtinsttest's tempdir
+
 		:raises UnsupportedOS Raised if this plugin did not detect a
-		supported OS.
-		"""
+		supported OS. """
 
 		# Initialize the logger for this object
 		self.logger = logging.getLogger(self.__class__.__name__)
@@ -69,6 +69,6 @@ class VirtInstTestPlugin():
 		""" Returns a list of "--extra-args" arguments for the
 		virt-install command.
 
-		:rtype: array """
+		:rtype: list """
 
 		return []
