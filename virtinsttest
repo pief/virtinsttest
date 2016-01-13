@@ -53,6 +53,11 @@ def ProcessCmdLineArgs():
 		default="qemu:///session"
 	)
 	parser.add_argument(
+		"--keep-tmpdir",
+		dest="keeptmpdir",
+		help="do not delete temporary directory at exit (for debugging purposes)",
+		action="store_true",
+		default=False
 	)
 	parser.add_argument(
 		"--video",
@@ -318,8 +323,9 @@ def CreateTempDir():
 	tempdir = tempfile.mkdtemp(prefix="virtinsttest.")
 
 	def DelTempDir():
-		logger.info("Removing temporary directory {0}...".format(tempdir))
-		#shutil.rmtree(tempdir)
+		if not args.keeptmpdir:
+			logger.info("Removing temporary directory {0}...".format(tempdir))
+			shutil.rmtree(tempdir)
 	atexit.register(DelTempDir)
 
 	return tempdir
