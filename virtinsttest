@@ -30,6 +30,7 @@ def ProcessCmdLineArgs():
 	parser.add_argument(
 		"--cfgfile",
 		help="reads CFGFILE as configuration file",
+		metavar="FILE",
 		default="virtinsttest.conf"
 	)
 	parser.add_argument(
@@ -42,6 +43,7 @@ def ProcessCmdLineArgs():
 		"--plugin-dir",
 		dest="plugindir",
 		help="sets the path to virtinsttest's plugins",
+		metavar="DIR",
 		default=os.path.join(os.path.dirname(sys.argv[0]), "plugins")
 	)
 	parser.add_argument(
