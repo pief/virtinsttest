@@ -60,6 +60,13 @@ def ProcessCmdLineArgs():
 		default=False
 	)
 	parser.add_argument(
+		"--keep-vm",
+		dest="keepvm",
+		help="do not delete the virtual machine and its storage after successful installations (for debugging purposes)",
+		action="store_true",
+		default=False
+	)
+	parser.add_argument(
 		"--video",
 		dest="video",
 		help="create a video of the VM console output",
@@ -405,12 +412,13 @@ def CreateVirtualDisk(disk):
 	)
 
 def DeleteVirtualDisk(imagename):
-	logger.info("Deleting virtual disk image \"{0}\"...".format(imagename))
+	if ("rc" in globals() and rc !=0) or not args.keepvm:
+		logger.info("Deleting virtual disk image \"{0}\"...".format(imagename))
 
-	if not conn.isAlive():
-		ConnectToLibvirtd()
+		if not conn.isAlive():
+			ConnectToLibvirtd()
 
-	libvirt.virStoragePool.storageVolLookupByName(storagepool, imagename).delete()
+		libvirt.virStoragePool.storageVolLookupByName(storagepool, imagename).delete()
 
 def CreateUSBStick(i, usbstick):
 	logger.info("- Setting up USB stick {0}:".format(i))
@@ -549,18 +557,19 @@ def StartVM(cmd):
 
 @EnsureLibvirtdConnection
 def KillVM():
-	try:
-		domain = LookupVMByName(cfg["instname"])
-		if domain:
-			state = domain.state()[0]
-			if state != libvirt.VIR_DOMAIN_SHUTOFF:
-				logger.info("Stopping (destroying) VM...")
-				domain.destroy()
+	if rc != 0 or not args.keepvm:
+		try:
+			domain = LookupVMByName(cfg["instname"])
+			if domain:
+				state = domain.state()[0]
+				if state != libvirt.VIR_DOMAIN_SHUTOFF:
+					logger.info("Stopping (destroying) VM...")
+					domain.destroy()
 
-			logger.info("Deleting (undefining) VM...")
-			domain.undefine()
-	except libvirt.libvirtError:
-		pass
+				logger.info("Deleting (undefining) VM...")
+				domain.undefine()
+		except libvirt.libvirtError:
+			pass
 
 @EnsureLibvirtdConnection
 def VMState():
