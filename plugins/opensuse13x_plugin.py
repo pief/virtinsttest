@@ -26,7 +26,10 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 
 		# Make detected version available via variables used by
 		# standard getter
-		self.osvariant = "opensuse{0}".format(self.osversion)
+		if self.osversion.startswith("Leap "):
+			self.osvariant = "opensuse-factory"
+		else:
+			self.osvariant = "opensuse{0}".format(self.osversion)
 		self.logger.debug("Deduced osvariant: {0}".format(self.osvariant))
 
 		# For openSUSE distributions, installation monitoring will be
@@ -85,24 +88,28 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 
 		self.logger.info("Creating Driver Update Disk (DUD) image to retrofit 9p filesystem sharing:")
 
+		# Workaround for Tumbleweed
+		osversion = "13.2" if self.osversion.startswith("Leap") \
+		                   else self.osversion
+
 		self.logger.info("- Creating DUD directory structure...")
 		duddir = os.path.join(tempdir, "dud")
 		dudinstalldir = os.path.join(
 			duddir,
-			"linux/suse/x86_64-{0}/install".format(self.osversion)
+			"linux/suse/x86_64-{0}/install".format(osversion)
 		)
 		os.makedirs(dudinstalldir, 0755)
 
 		self.logger.info("- Creating dud.config...")
 		with open(os.path.join(duddir, "dud.config"), "w") as f:
-			f.write("UpdateName: virtinsttest DUD for openSUSE {0}\n".format(self.osversion))
+			f.write("UpdateName: virtinsttest DUD for openSUSE {0}\n".format(osversion))
 			f.write("UpdateID: e82ffff3-34d9-4f6b-bd58-b638f234776\n")
 
 		self.logger.info("- Creating DUD update.pre script...")
 		with open(
 			os.path.join(
 				duddir,
-				"linux/suse/x86_64-{0}/install/update.pre".format(self.osversion)
+				"linux/suse/x86_64-{0}/install/update.pre".format(osversion)
 			), "w"
 		) as f:
 			f.write("""#!/bin/bash
@@ -133,24 +140,24 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		cmd = cmd.format(modextractdir, path)
 		subprocess.check_call(cmd, shell=True)
 		cmd = "find {0} -name *.ko -exec mv {{}} {1}/linux/suse/x86_64-{2}/install/ \;"
-		cmd = cmd.format(modextractdir, duddir, self.osversion)
+		cmd = cmd.format(modextractdir, duddir, osversion)
 		subprocess.check_call(cmd, shell=True)
 
 		self.logger.info("- Generating DUD archive...")
 		cmd = "cd {0} && " \
 			  "find | " \
 			  "cpio --quiet -o >{1}/dud_opensuse{2}.cpio"
-		cmd = cmd.format(duddir, tempdir, self.osversion)
+		cmd = cmd.format(duddir, tempdir, osversion)
 		subprocess.check_call(cmd, shell=True)
 		cmd = "gzip -q {0}/dud_opensuse{1}.cpio"
-		cmd = cmd.format(tempdir, self.osversion)
+		cmd = cmd.format(tempdir, osversion)
 		subprocess.check_call(cmd, shell=True)
 
 		self.logger.info("- Removing temporary directories...")
 		shutil.rmtree(modextractdir)
 		shutil.rmtree(duddir)
 
-		return "{0}/dud_opensuse{1}.cpio.gz".format(tempdir, self.osversion)
+		return "{0}/dud_opensuse{1}.cpio.gz".format(tempdir, osversion)
 
 	def getVirtInstallFilesystemArgs(self):
 		""" Returns a dictionary of "--filesystem" arguments for the
