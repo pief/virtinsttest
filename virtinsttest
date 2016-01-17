@@ -16,6 +16,10 @@ import sys, os, re, argparse, ConfigParser, glob, logging
 import itertools, atexit, traceback, tempfile, shutil, tarfile, subprocess, time
 import libvirt, StringIO, PIL.Image, PIL.ImageOps, PIL.ImageFont, PIL.ImageDraw, cv2, numpy
 
+# The installation state that must be reached in stage 1 to consider the
+# stage to have completed successfully
+INSTSTATE_STAGE1_FINISHED = 99
+
 def ProcessCmdLineArgs():
 	parser = argparse.ArgumentParser(
 		description="Virtual installation testing",
@@ -412,7 +416,8 @@ def CreateVirtualDisk(disk):
 	)
 
 def DeleteVirtualDisk(imagename):
-	if ("rc" in globals() and rc !=0) or not args.keepvm:
+	logger.debug("DeleteVirtualDisk")
+	if ("inststate" in globals() and inststate != INSTSTATE_STAGE1_FINISHED) or not args.keepvm:
 		logger.info("Deleting virtual disk image \"{0}\"...".format(imagename))
 
 		if not conn.isAlive():
@@ -557,7 +562,8 @@ def StartVM(cmd):
 
 @EnsureLibvirtdConnection
 def KillVM():
-	if rc != 0 or not args.keepvm:
+	logger.debug("KillVM")
+	if ("inststate" in globals() and inststate != INSTSTATE_STAGE1_FINISHED) or not args.keepvm:
 		try:
 			domain = LookupVMByName(cfg["instname"])
 			if domain:
