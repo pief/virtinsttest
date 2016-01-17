@@ -416,7 +416,6 @@ def CreateVirtualDisk(disk):
 	)
 
 def DeleteVirtualDisk(imagename):
-	logger.debug("DeleteVirtualDisk")
 	if ("inststate" in globals() and inststate != INSTSTATE_STAGE1_FINISHED) or not args.keepvm:
 		logger.info("Deleting virtual disk image \"{0}\"...".format(imagename))
 
@@ -562,7 +561,6 @@ def StartVM(cmd):
 
 @EnsureLibvirtdConnection
 def KillVM():
-	logger.debug("KillVM")
 	if ("inststate" in globals() and inststate != INSTSTATE_STAGE1_FINISHED) or not args.keepvm:
 		try:
 			domain = LookupVMByName(cfg["instname"])
