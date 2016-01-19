@@ -376,7 +376,7 @@ def CreateISOStoragePool():
 	poolname = "{0}_isopool".format(cfg["instname"])
 	logger.info("- Creating storage pool \"{0}\" for ISO image \"{1}\"...".format(poolname, cfg["isoimage"]))
 
-	atexit.register(DeleteIsoStoragePool, poolname)
+	atexit.register(DeleteISOStoragePool, poolname)
 
 	xml = "<pool type='dir'>" \
 	      "<name>{0}</name>" \
@@ -389,7 +389,7 @@ def CreateISOStoragePool():
 
 	return poolname
 
-def DeleteIsoStoragePool(poolname):
+def DeleteISOStoragePool(poolname):
 	logger.info("Deleting ISO image storage pool \"{0}\"...".format(poolname))
 
 	if not conn.isAlive():
