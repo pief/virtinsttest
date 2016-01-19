@@ -334,9 +334,11 @@ def CreateTempDir():
 	tempdir = tempfile.mkdtemp(prefix="virtinsttest.")
 
 	def DeleteTempDir():
-		if not args.keeptmpdir:
+		if "inststate" not in globals() or (inststate == INSTSTATE_STAGE1_FINISHED and not args.keeptmpdir):
 			logger.info("Removing temporary directory {0}...".format(tempdir))
 			shutil.rmtree(tempdir)
+		else:
+			logger.info("Keeping temporary directory {0} for inspection.".format(tempdir))
 	atexit.register(DeleteTempDir)
 
 	return tempdir
