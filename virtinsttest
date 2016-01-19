@@ -436,7 +436,7 @@ def CreateUSBStick(i, usbstick):
 	tararchive.close()
 
 	# Create a virtual disk image
-	CreateVirtualDisk(usbstick)
+	usbstick = CreateVirtualDisk(usbstick)
 
 	logger.info("  - Opening the virtual disk image...")
 	imagepath = libvirt.virStoragePool.storageVolLookupByName(storagepool, usbstick["imagename"]).path()
@@ -462,6 +462,8 @@ def CreateUSBStick(i, usbstick):
 
 	logger.info("  - Removing tar archive...")
 	os.remove(tararchivename)
+
+	return usbstick
 
 def GenerateVirtInstallCmd():
 	cmd = "virt-install" \
@@ -778,7 +780,7 @@ storagepool = libvirt.virConnect.storagePoolLookupByName(conn, "default")
 for disk in cfg["virtualdisks"]:
 	disk = CreateVirtualDisk(disk)
 for i, usbstick in enumerate(cfg["usbsticks"]):
-	CreateUSBStick(i+1, usbstick)
+	usbstick = CreateUSBStick(i+1, usbstick)
 
 # Now generate virt-install command and start VM
 StartVM(GenerateVirtInstallCmd())
