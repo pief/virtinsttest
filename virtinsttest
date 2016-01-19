@@ -575,9 +575,88 @@ def KillVM():
 					domain.destroy()
 
 				logger.info("Deleting (undefining) VM...")
-				domain.undefine()
+				domain.undefineFlags(
+					libvirt.VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA
+				)
 		except libvirt.libvirtError:
 			pass
+
+@EnsureLibvirtdConnection
+def LookupVMSnapshotByName(name):
+	""" Alternative to libvirt's domain.snapshotLookupByName() which
+	    triggers ugly errors on stderr if a snapshot can not be found. """
+
+	domain = LookupVMByName(cfg["instname"])
+	if domain:
+		snapshots = domain.listAllSnapshots()
+		for snapshot in snapshots:
+			if snapshot.getName() == name:
+				return snapshot
+
+	return None
+
+@EnsureLibvirtdConnection
+def CreateVMSnapshot(name):
+	logger.info("Creating VM snapshot \"{0}\"...".format(name))
+	domain = LookupVMByName(cfg["instname"])
+	if domain:
+		atexit.register(DeleteVMSnapshot, name)
+
+		xml= "<domainsnapshot>" \
+		     "<name>{0}</name>" \
+		     "<description>Created by virtinsttest</description>" \
+		     "<disks>"
+		xml = xml.format(name)
+		for disk in cfg["virtualdisks"]:
+			imagefile = storagepool.storageVolLookupByName(disk["imagename"]).path()
+			diskxml = "<disk name=\"{0}\" snapshot=\"external\">" \
+			          "<source file=\"{1}\" />" \
+			          "</disk>"
+			diskxml = diskxml.format(
+				imagefile,
+				re.sub(".qcow2", "_{0}.qcow2".format(name), imagefile)
+			)
+			xml = xml + diskxml
+		for _, disk in enumerate(cfg["usbsticks"]):
+			imagefile = storagepool.storageVolLookupByName(disk["imagename"]).path()
+			diskxml = "<disk name=\"{0}\" snapshot=\"no\">" \
+			          "</disk>"
+			diskxml = diskxml.format(imagefile)
+			xml = xml + diskxml
+		xml = xml + "</disks>" \
+		            "</domainsnapshot>"
+		try:
+			snapshot = domain.snapshotCreateXML(
+				xml,
+				libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY
+			)
+
+			# Refresh storagepool in which the snapshot backing files
+			# were created, so libvirt is aware of the volumes
+			storagepool.refresh()
+		except libvirt.libvirtError as e:
+			logger.error("Could not create snapshot: {0}!".format(e))
+			sys.exit(-1)
+	else:
+		logger.error("VM apparantly got undefined before snapshot could be taken!")
+		sys.exit(-1)
+
+@EnsureLibvirtdConnection
+def DeleteVMSnapshot(name):
+	snapshot = LookupVMSnapshotByName(name)
+	if snapshot:
+		logger.info("Deleting VM snapshot \"{0}\"...".format(name))
+
+		try:
+			# libvirt still doesn't support deleting external snapshots.
+			# Doh! Never mind, we can safely just delete the underlying
+			# disk images because IF we are deleting snapshots we're tearing
+			# down everything else with them as well.
+			for disk in cfg["virtualdisks"]:
+				snapshotfile = re.sub(".qcow2", "_{0}.qcow2".format(name), disk["imagename"])
+				DeleteVirtualDisk(snapshotfile)
+		except libvirt.libvirtError:
+			logger.error("Could not delete snapshot \"{0}\"!".format(name))
 
 @EnsureLibvirtdConnection
 def VMState():
@@ -892,3 +971,10 @@ while rc == 0:
 		logmsg = p.getStats(data)
 		if logmsg:
 			logger.debug(logmsg)
+
+# Something went wrong above?
+if inststate != INSTSTATE_STAGE1_FINISHED:
+	sys.exit(1)
+
+# Take a snapshot
+CreateVMSnapshot("Stage1_Finished")
