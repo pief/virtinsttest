@@ -888,7 +888,7 @@ while rc == 0:
 	# Check general VM state
 	vmstate = VMState()
 	if vmstate == 0:
-		logger.info("VM shut off after regular shutdown, installation stage 1 finished.")
+		logger.info("VM shut off after regular shutdown.")
 	elif vmstate == -1:
 		logger.error("VM shut off without regular shutdown (reason code: {0})".format(vmreason))
 	elif vmstate == -2:
@@ -976,6 +976,7 @@ while rc == 0:
 
 # Something went wrong above?
 if inststate != INSTSTATE_STAGE1_FINISHED:
+	logger.error("Installation stage 1 doesn't seem to have been completed, exiting!")
 	sys.exit(1)
 
 # Take a snapshot
