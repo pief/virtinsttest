@@ -415,6 +415,8 @@ def CreateVirtualDisk(disk):
 		libvirt.VIR_STORAGE_VOL_CREATE_PREALLOC_METADATA
 	)
 
+	return disk
+
 def DeleteVirtualDisk(imagename):
 	if ("inststate" in globals() and inststate != INSTSTATE_STAGE1_FINISHED) or not args.keepvm:
 		logger.info("Deleting virtual disk image \"{0}\"...".format(imagename))
@@ -773,7 +775,8 @@ ConnectToLibvirtd()
 logger.info("Setting up configured storage:")
 isopool = CreateISOStoragePool()
 storagepool = libvirt.virConnect.storagePoolLookupByName(conn, "default")
-map(CreateVirtualDisk, cfg["virtualdisks"])
+for disk in cfg["virtualdisks"]:
+	disk = CreateVirtualDisk(disk)
 for i, usbstick in enumerate(cfg["usbsticks"]):
 	CreateUSBStick(i+1, usbstick)
 
