@@ -333,11 +333,11 @@ def DetectOS(path):
 def CreateTempDir():
 	tempdir = tempfile.mkdtemp(prefix="virtinsttest.")
 
-	def DelTempDir():
+	def DeleteTempDir():
 		if not args.keeptmpdir:
 			logger.info("Removing temporary directory {0}...".format(tempdir))
 			shutil.rmtree(tempdir)
-	atexit.register(DelTempDir)
+	atexit.register(DeleteTempDir)
 
 	return tempdir
 
