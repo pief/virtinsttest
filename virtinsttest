@@ -392,12 +392,13 @@ def CreateISOStoragePool():
 	return poolname
 
 def DeleteISOStoragePool(poolname):
-	logger.info("Deleting ISO image storage pool \"{0}\"...".format(poolname))
+	if ("inststate" in globals() and inststate != INSTSTATE_STAGE1_FINISHED) or not args.keepvm:
+		logger.info("Deleting ISO image storage pool \"{0}\"...".format(poolname))
 
-	if not conn.isAlive():
-		ConnectToLibvirtd()
+		if not conn.isAlive():
+			ConnectToLibvirtd()
 
-	conn.storagePoolLookupByName(poolname).destroy()
+		conn.storagePoolLookupByName(poolname).destroy()
 
 def CreateVirtualDisk(disk):
 	disk["imagename"] = "{0}_{1}.qcow2".format(cfg["instname"], disk["name"])
