@@ -364,14 +364,20 @@ def EnsureLibvirtdConnection(orig_func):
 	return decorated_func
 
 def ConvertHumanReadableSize(size, stopat=""):
-	units = "tgmk"
-	for i in range(len(units)):
-		if stopat.upper() == units[i].upper():
-			break
-		regexp = r"[{0}{1}][bB]?$".format(units[i], units[i].upper())
-		if re.search(regexp, size):
-			val = int(re.sub(regexp, "", size)) * 1024
-			size = "{0}{1}".format(val, units[i+1] if i+1<len(units) else "")
+	""" Computes a size from a human-readable representation with units
+	    such as MB. """
+
+	m = re.search("(\d+)([tTgGmMkK])[bB]?$", size)
+	if m:
+		if m.group(2).lower() == "t":
+			return int(m.group(1))*1024*1024*1024*1024
+		elif m.group(2).lower() == "g":
+			return int(m.group(1))*1024*1024*1024
+		elif m.group(2).lower() == "m":
+			return int(m.group(1))*1024*1024
+		elif m.group(2).lower() == "k":
+			return int(m.group(1))*1024
+
 	return size
 
 def CreateISOStoragePool():
@@ -403,7 +409,7 @@ def DeleteISOStoragePool(poolname):
 def CreateVirtualDisk(disk):
 	disk["imagename"] = "{0}_{1}.qcow2".format(cfg["instname"], disk["name"])
 
-	logger.info("- Creating virtual disk image \"{0}\" ({1})...".format(disk["imagename"], disk["size"]))
+	logger.info("- Creating virtual disk image \"{0}\" ({1} bytes)...".format(disk["imagename"], disk["size"]))
 
 	atexit.register(DeleteVirtualDisk, disk["imagename"])
 
@@ -412,7 +418,7 @@ def CreateVirtualDisk(disk):
 	      "<capacity>{1}</capacity>" \
 	      "<target><format type='qcow2'/></target>" \
 	      "</volume>"
-	xml = xml.format(disk["imagename"], ConvertHumanReadableSize(disk["size"]))
+	xml = xml.format(disk["imagename"], disk["size"])
 	libvirt.virStoragePool.createXML(
 		storagepool, xml,
 		libvirt.VIR_STORAGE_VOL_CREATE_PREALLOC_METADATA
@@ -484,7 +490,7 @@ def GenerateVirtInstallCmd():
 		libvirtduri = args.libvirtduri,
 		instname = cfg["instname"],
 		cpus = cfg["cpus"],
-		memory = ConvertHumanReadableSize(cfg["memory"], "M").strip("M"),
+		memory = cfg["memory"] / (1024*1024),
 		osvariant = p.getOSVariant(),
 		mountpoint = cfg["mountpoint"],
 		isopool = isopool,
@@ -819,14 +825,18 @@ cfg = ReadConfigFile(args.cfgfile)
 logger.info("Virtual installation setup obtained from config file:")
 logger.info("- Installation name: {0}".format(cfg["instname"]))
 logger.info("- {0} CPUs, {1} memory".format(cfg["cpus"], cfg["memory"]))
+cfg["memory"] = ConvertHumanReadableSize(cfg["memory"])
 for i, virtualdisk in enumerate(cfg["virtualdisks"]):
 	msg = "- Virtual disk {0}: \"{1}\", {2}, Boot order: {3}"
 	logger.info(msg.format(i+1, virtualdisk["name"], virtualdisk["size"], virtualdisk["bootorder"]))
+	virtualdisk["size"] = ConvertHumanReadableSize(virtualdisk["size"])
+
 logger.info("- Installation ISO image : \"{0}\"".format(cfg["isoimage"]))
 logger.info("- Installation mountpoint: \"{0}\"".format(cfg["mountpoint"]))
 for i, usbstick in enumerate(cfg["usbsticks"]):
 	msg = "- USB Stick {0}: {1}, source directory \"{2}\""
 	logger.info(msg.format(i+1, usbstick["size"], usbstick["sourcedir"]))
+	usbstick["size"] = ConvertHumanReadableSize(usbstick["size"])
 
 # Make the plugin directory available for importing and import the
 # plugin API
