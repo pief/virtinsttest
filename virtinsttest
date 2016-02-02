@@ -566,14 +566,14 @@ def CreateVM(cmd):
 			break
 		time.sleep(0.1)
 	if domain:
-		atexit.register(KillVM)
+		atexit.register(DeleteVM)
 		logger.info("VM now running in background, use virt-manager to access the console, if desired.")
 	else:
 		logger.error("virt-install failed!")
 		sys.exit(1)
 
 @EnsureLibvirtdConnection
-def KillVM():
+def DeleteVM():
 	if ("inststate" in globals() and inststate != INSTSTATE_STAGE1_FINISHED) or not args.keepvm:
 		try:
 			domain = LookupVMByName(cfg["instname"])
@@ -967,8 +967,8 @@ while rc == 0:
 		logger.error(msg)
 		CaptureVMConsole(msg, footerdata)
 
-		# Kill VM
-		KillVM()
+		# Delete VM
+		DeleteVM()
 
 		rc = -1
 		break
