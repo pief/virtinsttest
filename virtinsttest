@@ -14,7 +14,8 @@ VirtInstTestVersion = "unknown"
 
 import sys, os, re, argparse, ConfigParser, glob, logging
 import itertools, atexit, traceback, tempfile, shutil, tarfile, subprocess, time
-import libvirt, StringIO, PIL.Image, PIL.ImageOps, PIL.ImageFont, PIL.ImageDraw, cv2, numpy
+import libvirt, xml.etree.ElementTree
+import StringIO, PIL.Image, PIL.ImageOps, PIL.ImageFont, PIL.ImageDraw, cv2, numpy
 
 # The installation state that must be reached in stage 1 to consider the
 # stage to have completed successfully
@@ -202,7 +203,7 @@ def ReadConfigFile(cfgfilename):
 		cfg["instname"] = cfgparser.get(section, "Name")
 
 		section = "Resources"
-		cfg["cpus"] = cfgparser.get(section, "CPUs")
+		cfg["cpus"] = int(cfgparser.get(section, "CPUs"))
 		cfg["memory"] = cfgparser.get(section, "Memory")
 
 		cfg["virtualdisks"] = []
@@ -544,6 +545,108 @@ def LookupVMByName(name):
 			return domain
 
 	return None
+
+@EnsureLibvirtdConnection
+def TestVMCompatibility(stage):
+	""" Tests whether a suitable VM already exists.
+
+	:param string stage: The installation stage for which we're testing.
+	:rtype: bool True if existing VM compatible (and turned off), False
+	if no VM exists or not compatible. """
+
+	domain = LookupVMByName(cfg["instname"])
+	if domain:
+		[ vm_state, vm_memory, _, vm_cpus, _ ] = domain.info()
+
+		# Ensure that VM is turned off
+		if vm_state != libvirt.VIR_DOMAIN_SHUTOFF:
+			states = {
+				libvirt.VIR_DOMAIN_NOSTATE: "unknown",
+				libvirt.VIR_DOMAIN_RUNNING: "running",
+				libvirt.VIR_DOMAIN_BLOCKED: "blocked",
+				libvirt.VIR_DOMAIN_PAUSED: "paused",
+				libvirt.VIR_DOMAIN_SHUTDOWN: "in shutdown"
+			}
+			logger.info("Existing VM is in state \"{0}\" instead of \"shutoff\", not reusing it.".format(
+				states[vm_state]
+			))
+			return False
+
+		# Compare number of CPUs
+		if vm_cpus != cfg["cpus"]:
+			logger.info("Existing VM has different {0} CPUs, {1} required, not reusing it.".format(
+				vm_cpus, cfg["cpus"]
+			))
+			return False
+
+		# Compare configured memory amount
+		if vm_memory*1024 != cfg["memory"]:
+			logger.info("Existing VM has {0}MB memory, {1}MB required, not reusing it.".format(
+				vm_memory/1024, cfg["memory"] / (1024*1024)
+			))
+			return False
+
+		# Create list of VM's virtual disks
+		xmlroot = xml.etree.ElementTree.fromstring(domain.XMLDesc(0))
+		diskelems = xmlroot.findall("./devices/disk/[@device='disk']")
+		virtualdisks = []
+		for diskelem in diskelems:
+			# All virtinsttest virtual disks are file-backed
+			sourcefile = diskelem.find("./source").get("file")
+			if sourcefile is None:
+				continue
+
+			# All virtinsttest virtual disks are named after the installation
+			# and the installation stage we're in. Reduce that to the real
+			# disk name as specified in the configuration file.
+			sourcefile_short = os.path.basename(sourcefile)
+			m = re.match("^{0}_(.*)_{1}.qcow2".format(cfg["instname"], stage), sourcefile_short)
+			if not m:
+				continue
+			diskname = m.group(1)
+
+			# Get capacity
+			[ capacity, _, _ ] = domain.blockInfo(sourcefile)
+
+			# Get boot order
+			bootelem = diskelem.find("./boot")
+			if bootelem is None:
+				continue
+			bootorder = bootelem.get("order")
+
+			virtualdisks.append({
+				"name": diskname,
+				"size": capacity,
+				"bootorder": bootorder
+			})
+
+		# Compare virtual disks
+		for cfg_disk in cfg["virtualdisks"]:
+			try:
+				disk = filter(lambda d: d["name"] == cfg_disk["name"], virtualdisks)[0]
+			except IndexError:
+				logger.info("Existing VM has no virtual disk \"{0}\", not reusing it.".format(
+					cfg_disk["name"]
+				))
+				return False
+
+			if disk["size"] != cfg_disk["size"]:
+				logger.info("Existing VM virtual disk \"{0}\" has wrong size {1}, {2} required, not reusing it.".format(
+					disk["name"], disk["size"], cfg_disk["size"]
+				))
+				return False
+
+			# Compare boot order
+			if disk["bootorder"] != cfg_disk["bootorder"]:
+				logger.info("Existing VM disk \"{0}\" has wrong bootorder {1}, {2} required, not reusing it".format(
+					diskname, bootorder, cfg_disk["bootorder"]
+				))
+				return False
+
+		logger.info("Existing VM compatible, going to reuse it.")
+		return True
+
+	return False
 
 @EnsureLibvirtdConnection
 def CreateVM(cmd):
