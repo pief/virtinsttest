@@ -546,7 +546,7 @@ def LookupVMByName(name):
 	return None
 
 @EnsureLibvirtdConnection
-def StartVM(cmd):
+def CreateVM(cmd):
 	logger.info("Calling virt-install to create VM and start installation...")
 	logger.debug(cmd)
 	try:
@@ -875,7 +875,7 @@ for i, usbstick in enumerate(cfg["usbsticks"]):
 	usbstick = CreateUSBStick(i+1, usbstick)
 
 # Now generate virt-install command and start VM
-StartVM(GenerateVirtInstallCmd())
+CreateVM(GenerateVirtInstallCmd())
 
 # The VM installation uses a finite state machine (FSM) that must transition
 # away from the initial installation state 0 in at most three minutes,
