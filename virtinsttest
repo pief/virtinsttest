@@ -573,8 +573,8 @@ def CreateVM(cmd):
 		sys.exit(1)
 
 @EnsureLibvirtdConnection
-def DeleteVM():
-	if ("inststate" in globals() and inststate != INSTSTATE_STAGE1_FINISHED) or not args.keepvm:
+def DeleteVM(force=False):
+	if ("inststate" in globals() and inststate != INSTSTATE_STAGE1_FINISHED) or not args.keepvm or force:
 		try:
 			domain = LookupVMByName(cfg["instname"])
 			if domain:
