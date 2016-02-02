@@ -755,20 +755,21 @@ def CreateVMSnapshot(name):
 
 @EnsureLibvirtdConnection
 def DeleteVMSnapshot(name):
-	snapshot = LookupVMSnapshotByName(name)
-	if snapshot:
-		logger.info("Deleting VM snapshot \"{0}\"...".format(name))
+	if ("inststate" in globals() and inststate != INSTSTATE_STAGE1_FINISHED) or not args.keepvm:
+		snapshot = LookupVMSnapshotByName(name)
+		if snapshot:
+			logger.info("Deleting VM snapshot \"{0}\"...".format(name))
 
-		try:
-			# libvirt still doesn't support deleting external snapshots.
-			# Doh! Never mind, we can safely just delete the underlying
-			# disk images because IF we are deleting snapshots we're tearing
-			# down everything else with them as well.
-			for disk in cfg["virtualdisks"]:
-				snapshotfile = re.sub(".qcow2", "_{0}.qcow2".format(name), disk["imagename"])
-				DeleteVirtualDisk(snapshotfile)
-		except libvirt.libvirtError:
-			logger.error("Could not delete snapshot \"{0}\"!".format(name))
+			try:
+				# libvirt still doesn't support deleting external snapshots.
+				# Doh! Never mind, we can safely just delete the underlying
+				# disk images because IF we are deleting snapshots we're tearing
+				# down everything else with them as well.
+				for disk in cfg["virtualdisks"]:
+					snapshotfile = re.sub(".qcow2", "_{0}.qcow2".format(name), disk["imagename"])
+					DeleteVirtualDisk(snapshotfile)
+			except libvirt.libvirtError:
+				logger.error("Could not delete snapshot \"{0}\"!".format(name))
 
 @EnsureLibvirtdConnection
 def VMState():
