@@ -995,6 +995,10 @@ if args.skipstage and not TestVMCompatibility("Stage1_Finished") or not args.ski
 	for i, usbstick in enumerate(cfg["usbsticks"]):
 		usbstick = CreateUSBStick(i+1, usbstick)
 
+	# Prepare installation
+	logger.info("Preparing installation...")
+	p.prepareInstallation()
+
 	# Now generate virt-install command and start VM
 	CreateVM(GenerateVirtInstallCmd())
 

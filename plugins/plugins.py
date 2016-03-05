@@ -38,6 +38,11 @@ class VirtInstTestPlugin():
 	class UnsupportedOS(Exception):
 		pass
 
+	def prepareInstallation(self):
+		""" Does any prepatory work required to launch an installation. """
+
+		pass
+
 	def getOSVariant(self):
 		""" Returns a "--os-variant" identifier for the virt-install
 		command.
