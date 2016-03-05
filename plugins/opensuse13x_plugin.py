@@ -39,10 +39,9 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		self.y2logs_dir = os.path.join(tempdir, "y2logs")
 		os.mkdir(self.y2logs_dir)
 
-		# openSUSE installation media lack the 9p kernel modules
-		# required for sharing directories between host and guest, so
-		# we retrofit them via the "Driver Update Disk" (DUD) mechanism
-		self.dudfile = self._GenerateDUD(path, tempdir)
+		# Remember arguments for prepareInstallation()
+		self.path    = path
+		self.tempdir = tempdir
 
 		# Initialize for getFooterData()
 		self.logbuf = []
@@ -77,15 +76,10 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 
 		return None
 
-	def _GenerateDUD(self, path, tempdir):
-		""" Creates a Driver Update Disk (DUD) image to retrofit 9p
-		    filesystem sharing.
-
-		path: The path to the mounted openSUSE ISO to create a DUD for
-		tempdir: The directory to create the .cpio.gz archive in
-
-		:rtype: string The filename of the DUD .cpio.gz archive """
-
+	def prepareInstallation(self):
+		# openSUSE installation media lack the 9p kernel modules
+		# required for sharing directories between host and guest, so
+		# we retrofit them via the "Driver Update Disk" (DUD) mechanism
 		self.logger.info("Creating Driver Update Disk (DUD) image to retrofit 9p filesystem sharing:")
 
 		# Workaround for Tumbleweed
@@ -93,7 +87,7 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		                   else self.osversion
 
 		self.logger.info("- Creating DUD directory structure...")
-		duddir = os.path.join(tempdir, "dud")
+		duddir = os.path.join(self.tempdir, "dud")
 		dudinstalldir = os.path.join(
 			duddir,
 			"linux/suse/x86_64-{0}/install".format(osversion)
@@ -132,12 +126,12 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		""")
 
 		self.logger.info("- Extracting 9p.ko, 9pnet.ko and 9pnet_virtio.ko from kernel-default RPM...")
-		modextractdir = os.path.join(tempdir, "modextract")
+		modextractdir = os.path.join(self.tempdir, "modextract")
 		os.mkdir(modextractdir, 0755)
 		cmd = "cd {0} && " \
 			  "rpm2cpio {1}/suse/x86_64/kernel-default-[0123456789]*.rpm | " \
 			  "cpio --quiet -imd */9p.ko */9pnet.ko */9pnet_virtio.ko"
-		cmd = cmd.format(modextractdir, path)
+		cmd = cmd.format(modextractdir, self.path)
 		subprocess.check_call(cmd, shell=True)
 		cmd = "find {0} -name *.ko -exec mv {{}} {1}/linux/suse/x86_64-{2}/install/ \;"
 		cmd = cmd.format(modextractdir, duddir, osversion)
@@ -147,17 +141,17 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		cmd = "cd {0} && " \
 			  "find | " \
 			  "cpio --quiet -o >{1}/dud_opensuse{2}.cpio"
-		cmd = cmd.format(duddir, tempdir, osversion)
+		cmd = cmd.format(duddir, self.tempdir, osversion)
 		subprocess.check_call(cmd, shell=True)
 		cmd = "gzip -q {0}/dud_opensuse{1}.cpio"
-		cmd = cmd.format(tempdir, osversion)
+		cmd = cmd.format(self.tempdir, osversion)
 		subprocess.check_call(cmd, shell=True)
 
 		self.logger.info("- Removing temporary directories...")
 		shutil.rmtree(modextractdir)
 		shutil.rmtree(duddir)
 
-		return "{0}/dud_opensuse{1}.cpio.gz".format(tempdir, osversion)
+		self.dudfile = "{0}/dud_opensuse{1}.cpio.gz".format(self.tempdir, osversion)
 
 	def getVirtInstallFilesystemArgs(self):
 		return {
