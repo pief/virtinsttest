@@ -109,6 +109,13 @@ def ProcessCmdLineArgs():
 		default=5.0,
 		type=float
 	)
+	parser.add_argument(
+		"--skip-stage1",
+		dest="skipstage",
+		help="skip installation stage 1 if a suitable VM snapshot is present",
+		action="store_const",
+		const=1
+	)
 	return parser.parse_args()
 
 def SetupLogging(loglevel):
@@ -969,130 +976,139 @@ except ImportError:
 # Connect to libvirtd
 ConnectToLibvirtd()
 
-# Set up storage
-logger.info("Setting up configured storage:")
-isopool = CreateISOStoragePool()
-storagepool = libvirt.virConnect.storagePoolLookupByName(conn, "default")
-for disk in cfg["virtualdisks"]:
-	disk = CreateVirtualDisk(disk)
-for i, usbstick in enumerate(cfg["usbsticks"]):
-	usbstick = CreateUSBStick(i+1, usbstick)
+# Skipping installation stages requested?
+if args.skipstage and not TestVMCompatibility("Stage1_Finished") or not args.skipstage:
+	logger.info("No suitable existing VM snapshot requested or found.")
 
-# Now generate virt-install command and start VM
-CreateVM(GenerateVirtInstallCmd())
+	# Delete any existing incompatible VM
+	logger.info("Deleting any existing, incompatible VM...")
+	DeleteVM()
 
-# The VM installation uses a finite state machine (FSM) that must transition
-# away from the initial installation state 0 in at most three minutes,
-# otherwise we'll assume that booting kernel and installation system has
-# failed. Installation monitoring rules including additional installation
-# states and transitions are defined in OS-specific *.instmonrules files
-# and were read into the "rules" list in DetectOS().
-inststate        = 0
-inststatetime    = statstime = now = time.time()
-inststatetimeout = 180
+	logger.info("Creating VM from scratch.")
 
-lastlogmsg = "Booting kernel and installation system..."
-footerdata = []
-logger.info("[I00:<180s] {0}".format(lastlogmsg))
-CaptureVMConsole(lastlogmsg, footerdata)
-snapshottime = now
+	# Set up storage
+	logger.info("Setting up configured storage:")
+	isopool = CreateISOStoragePool()
+	storagepool = libvirt.virConnect.storagePoolLookupByName(conn, "default")
+	for disk in cfg["virtualdisks"]:
+		disk = CreateVirtualDisk(disk)
+	for i, usbstick in enumerate(cfg["usbsticks"]):
+		usbstick = CreateUSBStick(i+1, usbstick)
 
-# The big VM installation monitoring loop
-rc = 0
-while rc == 0:
-	# Check general VM state
-	vmstate = VMState()
-	if vmstate == 0:
-		logger.info("VM shut off after regular shutdown.")
-	elif vmstate == -1:
-		logger.error("VM shut off without regular shutdown (reason code: {0})".format(vmreason))
-	elif vmstate == -2:
-		logger.error("VM completely unknown to libvirt any longer, did somebody probably interfere?")
-	if vmstate < 1:
-		rc = vmstate
-		break
+	# Now generate virt-install command and start VM
+	CreateVM(GenerateVirtInstallCmd())
 
-	now = time.time()
+	# The VM installation uses a finite state machine (FSM) that must transition
+	# away from the initial installation state 0 in at most three minutes,
+	# otherwise we'll assume that booting kernel and installation system has
+	# failed. Installation monitoring rules including additional installation
+	# states and transitions are defined in OS-specific *.instmonrules files
+	# and were read into the "rules" list in DetectOS().
+	inststate        = 0
+	inststatetime    = statstime = now = time.time()
+	inststatetimeout = 180
 
-	# Call any data generator functions defined by installation
-	# monitoring rules for the current installation state. These functions
-	# generate data that may then be used by installation monitoring rules
-	# to decide on state transitions.
-	data = {}
-	for r in [r for r in rules if r["state"] == inststate and r["genfunc"]]:
-		# Each data generator function gets called only once to yield
-		# the next data element (eg. logfile line)
-		if r["genfunc"] not in data:
-			# A particular data generator function may at this time have
-			# no new data to offer
-			try:
-				data[r["genfunc"]] = getattr(p, r["genfunc"])().next()
-			except StopIteration:
-				data[r["genfunc"]] = None
+	lastlogmsg = "Booting kernel and installation system..."
+	footerdata = []
+	logger.info("[I00:<180s] {0}".format(lastlogmsg))
+	CaptureVMConsole(lastlogmsg, footerdata)
+	snapshottime = now
 
-	# Have the OS-specific plugin prepare footer data just in case
-	# we're going to take a screenshot
-	footerdata = p.getFooterData(data)
-
-	# Process installation monitoring rules for the current installation
-	# state
-	for r in [r for r in rules if r["state"] == inststate]:
-		# A rule's test method might require additional input data
-		# obtained from previously called data generator functions
-		if r["genfunc"]:
-			if data[r["genfunc"]] == None:
-				continue
-			testfuncargs = (r["logmsg"], r["testarg"], data[r["genfunc"]])
-		else:
-			testfuncargs = (r["logmsg"], r["testarg"])
-
-		# Execute the test method which returns a logmessage if transition
-		# to the current rule's newstate is desired and "None" otherwise
-		logmsg = getattr(p, r["testfunc"])(*testfuncargs)
-		if logmsg:
-			# State transition, apply new state and timeout
-			inststate        = r["newstate"]
-			inststatetime    = now
-			inststatetimeout = r["newtimeout"]
-			lastlogmsg       = logmsg
-
-			logger.info("[I{0:02}:<{1:03}s] {2}".format(inststate, inststatetimeout, logmsg))
-
-			CaptureVMConsole(logmsg, footerdata)
-			snapshottime = now
-
+	# The big VM installation monitoring loop
+	rc = 0
+	while rc == 0:
+		# Check general VM state
+		vmstate = VMState()
+		if vmstate == 0:
+			logger.info("VM shut off after regular shutdown.")
+		elif vmstate == -1:
+			logger.error("VM shut off without regular shutdown (reason code: {0})".format(vmreason))
+		elif vmstate == -2:
+			logger.error("VM completely unknown to libvirt any longer, did somebody probably interfere?")
+		if vmstate < 1:
+			rc = vmstate
 			break
 
-	# Check the current installation state's timeout set by previously
-	# applied rules
-	if (now - inststatetime) > inststatetimeout:
-		msg = "Got stuck in installation state I{0:02} for more than {1} seconds, aborting installation."
-		msg = msg.format(inststate, inststatetimeout)
-		logger.error(msg)
-		CaptureVMConsole(msg, footerdata)
+		now = time.time()
 
-		# Delete VM
-		DeleteVM()
+		# Call any data generator functions defined by installation
+		# monitoring rules for the current installation state. These functions
+		# generate data that may then be used by installation monitoring rules
+		# to decide on state transitions.
+		data = {}
+		for r in [r for r in rules if r["state"] == inststate and r["genfunc"]]:
+			# Each data generator function gets called only once to yield
+			# the next data element (eg. logfile line)
+			if r["genfunc"] not in data:
+				# A particular data generator function may at this time have
+				# no new data to offer
+				try:
+					data[r["genfunc"]] = getattr(p, r["genfunc"])().next()
+				except StopIteration:
+					data[r["genfunc"]] = None
 
-		rc = -1
-		break
+		# Have the OS-specific plugin prepare footer data just in case
+		# we're going to take a screenshot
+		footerdata = p.getFooterData(data)
 
-	# Take screenshot
-	if now - snapshottime > (1/args.videoframerate):
-		snapshottime = now
-		CaptureVMConsole(lastlogmsg, p.getFooterData(data))
+		# Process installation monitoring rules for the current installation
+		# state
+		for r in [r for r in rules if r["state"] == inststate]:
+			# A rule's test method might require additional input data
+			# obtained from previously called data generator functions
+			if r["genfunc"]:
+				if data[r["genfunc"]] == None:
+					continue
+				testfuncargs = (r["logmsg"], r["testarg"], data[r["genfunc"]])
+			else:
+				testfuncargs = (r["logmsg"], r["testarg"])
 
-	# Statistics hook
-	if now - statstime > 1:
-		statstime = now
-		logmsg = p.getStats(data)
-		if logmsg:
-			logger.debug(logmsg)
+			# Execute the test method which returns a logmessage if transition
+			# to the current rule's newstate is desired and "None" otherwise
+			logmsg = getattr(p, r["testfunc"])(*testfuncargs)
+			if logmsg:
+				# State transition, apply new state and timeout
+				inststate        = r["newstate"]
+				inststatetime    = now
+				inststatetimeout = r["newtimeout"]
+				lastlogmsg       = logmsg
 
-# Something went wrong above?
-if inststate != INSTSTATE_STAGE1_FINISHED:
-	logger.error("Installation stage 1 doesn't seem to have been completed, exiting!")
-	sys.exit(1)
+				logger.info("[I{0:02}:<{1:03}s] {2}".format(inststate, inststatetimeout, logmsg))
 
-# Take a snapshot
-CreateVMSnapshot("Stage1_Finished")
+				CaptureVMConsole(logmsg, footerdata)
+				snapshottime = now
+
+				break
+
+		# Check the current installation state's timeout set by previously
+		# applied rules
+		if (now - inststatetime) > inststatetimeout:
+			msg = "Got stuck in installation state I{0:02} for more than {1} seconds, aborting installation."
+			msg = msg.format(inststate, inststatetimeout)
+			logger.error(msg)
+			CaptureVMConsole(msg, footerdata)
+
+			rc = -1
+			break
+
+		# Take screenshot
+		if now - snapshottime > (1/args.videoframerate):
+			snapshottime = now
+			CaptureVMConsole(lastlogmsg, p.getFooterData(data))
+
+		# Statistics hook
+		if now - statstime > 1:
+			statstime = now
+			logmsg = p.getStats(data)
+			if logmsg:
+				logger.debug(logmsg)
+
+	# Something went wrong above?
+	if inststate != INSTSTATE_STAGE1_FINISHED:
+		logger.error("Installation stage 1 doesn't seem to have been completed, exiting!")
+		sys.exit(1)
+
+	# Take a snapshot
+	CreateVMSnapshot("Stage1_Finished")
+else:
+	logger.info("Skipping installation stage 1 using existing snapshot.")
