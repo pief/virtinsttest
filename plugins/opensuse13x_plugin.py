@@ -16,8 +16,19 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 	def __init__(self, path, tempdir):
 		VirtInstTestPlugin.__init__(self, path, tempdir)
 
-		# Try to detect openSUSE medium and version
-		self.osversion = self._ProbeOpenSUSEVersion(path)
+		# The most robust way to detect a openSUSE distribution seems
+		# to be via the installation medium's bootloader menu
+		self.osversion = None
+		try:
+			gfxbootfile = os.path.join(path, "boot/x86_64/loader/gfxboot.cfg")
+			with open(gfxbootfile) as f:
+				for line in f:
+					match = re.match(r"^product=openSUSE (.+)$", line)
+					if match and match.group(1):
+						self.osversion = match.group(1)
+						break
+		except IOError as e:
+			pass
 		if self.osversion:
 			msg = "Detected openSUSE version: {0}".format(self.osversion)
 			self.logger.info(msg)
@@ -53,28 +64,6 @@ class OpenSUSE13xPlugin(VirtInstTestPlugin):
 		self.min_lps = 0
 		self.avg_lps = 0
 		self.max_lps = 0
-
-	def _ProbeOpenSUSEVersion(self, path):
-		""" Probes for an OpenSUSE medium and its version.
-
-		path: The path to a mounted supposed openSUSE medium
-
-		:rtype: string|None The detected version number """
-
-		# The most robust way to detect a openSUSE distribution seems
-		# to be via the installation medium's bootloader menu
-		try:
-			gfxbootfile = os.path.join(path, "boot/x86_64/loader/gfxboot.cfg")
-			with open(gfxbootfile) as f:
-				for line in f:
-					match = re.match(r"^product=openSUSE (.+)$", line)
-					if match and match.group(1):
-						return match.group(1)
-						break
-		except IOError as e:
-			pass
-
-		return None
 
 	def prepareInstallation(self):
 		# openSUSE installation media lack the 9p kernel modules
